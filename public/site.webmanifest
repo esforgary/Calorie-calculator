@@ -1,0 +1,32 @@
+{
+  "id": "./",
+  "name": "Ритм",
+  "short_name": "Ритм",
+  "lang": "ru",
+  "description": "Ритм — личный дневник питания. Учёт калорий, БЖУ, активности и сна.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "theme_color": "#101c2b",
+  "background_color": "#101c2b",
+  "icons": [
+    {
+      "src": "./icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
