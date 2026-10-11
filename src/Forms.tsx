@@ -22,6 +22,7 @@ import {
 } from "./nutrition";
 import { FoodIcon } from "./FoodIcon";
 import { CustomSelect } from "./Select";
+import { productQuantityGrams, type ProductUnit } from "./portions";
 import { PRODUCT_CATEGORIES, RECIPE_CATEGORIES, foodCategoryLabel, resolveFoodCategory } from "./foodCategories";
 
 const mealNames: Record<MealType, string> = {
@@ -240,6 +241,9 @@ export function ProductForm({
   const [iconCategory, setIconCategory] = useState<FoodIconCategory>(initial ? resolveFoodCategory(initial) : "other");
   const [note, setNote] = useState(initial?.note ?? "");
   const [image, setImage] = useState(initial?.image);
+  const [servingGrams, setServingGrams] = useState(initial?.servingGrams ? String(initial.servingGrams) : "");
+  const [pieceGrams, setPieceGrams] = useState(initial?.pieceGrams ? String(initial.pieceGrams) : "");
+  const [basis, setBasis] = useState<ProductUnit>("grams");
   const [values, setValues] = useState({
     kcal: initial ? String(initial.kcal) : "",
     protein: initial ? String(initial.protein) : "",
@@ -250,29 +254,52 @@ export function ProductForm({
   const [error, setError] = useState("");
   const [imageBusy, setImageBusy] = useState(false);
   const imageRequest = useRef(0);
+  const basisWeight = basis === "grams" ? 100 : Number(basis === "serving" ? servingGrams : pieceGrams);
+  const validBasis = Number.isFinite(basisWeight) && basisWeight > 0 && basisWeight <= 5000;
+  const lastValidBasisWeight = useRef(100);
+  if (validBasis) lastValidBasisWeight.current = basisWeight;
+  const enteredNutrients: Nutrients = {
+    kcal: Number(values.kcal), protein: Number(values.protein), fat: Number(values.fat),
+    carbs: Number(values.carbs), fiber: Number(values.fiber),
+  };
+  const per100 = scaleNutrients(enteredNutrients, validBasis ? 100 / basisWeight : 0);
+  const hasNutrients = [values.kcal, values.protein, values.fat, values.carbs].every(value => value.trim() !== "" && Number.isFinite(Number(value)) && Number(value) >= 0);
+  function changeBasis(next: ProductUnit) {
+    const nextWeight = next === "grams" ? 100 : Number(next === "serving" ? servingGrams : pieceGrams);
+    if (!Number.isFinite(nextWeight) || nextWeight <= 0 || nextWeight > 5000) return;
+    const previousWeight = validBasis ? basisWeight : lastValidBasisWeight.current;
+    setValues(current => Object.fromEntries(Object.entries(current).map(([key, value]) => [key,
+      value.trim() === "" ? "" : String(Number((Number(value) * nextWeight / previousWeight).toPrecision(12))),
+    ])) as typeof current);
+    setBasis(next);
+    setError("");
+  }
   function submit(event: FormEvent<HTMLFormElement>) {
     stop(event);
     setError("");
     if (!name.trim()) return setError("Введите название продукта.");
+    if ([servingGrams, pieceGrams].some(value => value !== "" && !inRange(value, 0.01, 5000)))
+      return setError("Вес порции и одной штуки должен быть от 0,01 до 5000 г. Если не нужен — оставьте поле пустым.");
+    if (!validBasis) return setError("Укажите вес для выбранной порции или штуки.");
     if (
-      !inRange(values.kcal, 0, 1000) ||
+      !inRange(values.kcal, 0, 1000 * basisWeight / 100) ||
       !["protein", "fat", "carbs"].every((key) =>
-        inRange(values[key as "protein" | "fat" | "carbs"], 0, 100),
+        inRange(values[key as "protein" | "fat" | "carbs"], 0, basisWeight),
       )
     )
       return setError(
-        "Укажите ккал от 0 до 1000 и каждый показатель БЖУ от 0 до 100 г.",
+        "Проверьте значения: в пересчёте на 100 г допустимо до 1000 ккал и до 100 г каждого показателя БЖУ.",
       );
     if (
-      Number(values.protein) + Number(values.fat) + Number(values.carbs) >
+      per100.protein + per100.fat + per100.carbs >
       110
     )
       return setError(
         "Сумма белков, жиров и углеводов не может превышать 110 г на 100 г продукта. Проверьте упаковку.",
       );
-    if (values.fiber !== "" && !inRange(values.fiber, 0, 100))
+    if (values.fiber !== "" && !inRange(values.fiber, 0, basisWeight))
       return setError(
-        "Клетчатка должна быть от 0 до 100 г; если данных нет, оставьте поле пустым.",
+        "Клетчатка не может превышать вес выбранного количества продукта; если данных нет, оставьте поле пустым.",
       );
     if (imageBusy) return setError("Дождитесь обработки фото.");
     onSave({
@@ -284,11 +311,9 @@ export function ProductForm({
       note: note.trim(),
       image,
       custom: true,
-      kcal: Number(values.kcal),
-      protein: Number(values.protein),
-      fat: Number(values.fat),
-      carbs: Number(values.carbs),
-      fiber: values.fiber === "" ? 0 : Number(values.fiber),
+      servingGrams: servingGrams === "" ? undefined : Number(servingGrams),
+      pieceGrams: pieceGrams === "" ? undefined : Number(pieceGrams),
+      ...per100,
     });
   }
   async function chooseImage(file?: File) {
@@ -322,9 +347,25 @@ export function ProductForm({
         />
       </Field>
       <CategoryPicker value={iconCategory} onChange={setIconCategory} options={[...PRODUCT_CATEGORIES, ...RECIPE_CATEGORIES]} />
-      <p className="helper">
-        Все значения — на 100 г. Перенесите их с упаковки продукта.
-      </p>
+      <section className="product-portions" aria-label="Порции и штуки">
+        <div className="portion-heading"><h3>Порции и штуки</h3><span className="helper">Необязательно</span></div>
+        <div className="form-grid">
+          <NumberField label="Вес одной порции, г" value={servingGrams} set={setServingGrams} min={0.01} max={5000} required={false} placeholder="Например, 40" />
+          <NumberField label="Вес одной штуки, г" value={pieceGrams} set={setPieceGrams} min={0.01} max={5000} required={false} placeholder="Например, 25" />
+        </div>
+        <p className="helper">Укажите вес, чтобы видеть БЖУ порции или одной штуки и добавлять их в дневник без взвешивания каждый раз.</p>
+      </section>
+      <div className="nutrition-basis">
+        <span className="field-label">Пищевая ценность</span>
+        <div className="segmented portion-segmented" role="group" aria-label="На какое количество указаны значения">
+          {([['grams', 'На 100 г'], ['serving', 'На порцию'], ['piece', 'На 1 штуку']] as const).map(([unit, label]) => (
+            <button key={unit} type="button" className={basis === unit ? 'active' : ''} aria-pressed={basis === unit}
+              disabled={unit !== 'grams' && unit !== basis && !inRange(unit === 'serving' ? servingGrams : pieceGrams, 0.01, 5000)}
+              onClick={() => changeBasis(unit)}>{label}</button>
+          ))}
+        </div>
+        <p className="helper">{!validBasis ? 'Укажите вес выше или переключитесь на 100 г.' : basis === 'grams' ? 'Введите значения на 100 г с упаковки. Порция и штука рассчитаются автоматически.' : `Введите значения ${basis === 'serving' ? 'на одну порцию' : 'на одну штуку'} (${fmt(basisWeight)} г). На 100 г пересчитаем автоматически.`}</p>
+      </div>
       <div className="form-grid">
         {(
           [
@@ -342,11 +383,18 @@ export function ProductForm({
             set={(value) =>
               setValues((current) => ({ ...current, [key]: value }))
             }
-            max={key === "kcal" ? 1000 : 100}
+            max={validBasis ? (key === "kcal" ? 10 * basisWeight : basisWeight) : undefined}
             required={key !== "fiber"}
           />
         ))}
       </div>
+      {hasNutrients && validBasis && (servingGrams !== "" || pieceGrams !== "") && (
+        <div className="portion-previews" aria-label="Пересчёт пищевой ценности">
+          <NutrientPreview nutrients={per100} label="На 100 г" />
+          {inRange(servingGrams, 0.01, 5000) && <NutrientPreview nutrients={scaleNutrients(per100, Number(servingGrams) / 100)} label={`1 порция · ${fmt(Number(servingGrams))} г`} />}
+          {inRange(pieceGrams, 0.01, 5000) && <NutrientPreview nutrients={scaleNutrients(per100, Number(pieceGrams) / 100)} label={`1 штука · ${fmt(Number(pieceGrams))} г`} />}
+        </div>
+      )}
       <p className="helper">
         Пустая клетчатка означает «нет данных». В суммах используется 0, но это
         не подтверждённое отсутствие клетчатки; рекомендации не делают выводов
@@ -650,6 +698,7 @@ export function FoodForm({
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState("");
   const [grams, setGrams] = useState("100");
+  const [unit, setUnit] = useState<ProductUnit>("grams");
   const [mealType, setMealType] = useState<MealType>(meal);
   const [error, setError] = useState("");
   const filtered = (mode === "product" ? products : recipes).filter((item) =>
@@ -670,12 +719,15 @@ export function FoodForm({
   const missingIngredient = selectedRecipe?.ingredients.some(
     (item) => !products.some((product) => product.id === item.productId),
   );
+  const totalGrams = selectedProduct
+    ? productQuantityGrams(selectedProduct, unit, Number(grams))
+    : inRange(grams, 0.01, 5000) ? Number(grams) : null;
   const nutrients = selectedProduct
-    ? scaleNutrients(selectedProduct, Number(grams) / 100)
+    ? scaleNutrients(selectedProduct, (totalGrams ?? 0) / 100)
     : selectedRecipe && selectedRecipe.cookedWeight > 0
       ? scaleNutrients(
           recipeNutrients(selectedRecipe, products),
-          Number(grams) / selectedRecipe.cookedWeight,
+          (totalGrams ?? 0) / selectedRecipe.cookedWeight,
         )
       : { kcal: 0, protein: 0, fat: 0, carbs: 0, fiber: 0 };
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -687,8 +739,8 @@ export function FoodForm({
           ? "Выберите рецепт или сначала создайте его в разделе «Рецепты»."
           : "Выберите продукт.",
       );
-    if (!inRange(grams, 1, 5000))
-      return setError("Укажите порцию от 1 до 5000 г.");
+    if (totalGrams === null || totalGrams < 0.01)
+      return setError("Укажите количество больше нуля. Общий вес должен быть от 0,01 до 5000 г.");
     if (
       missingIngredient ||
       (selectedRecipe && !(selectedRecipe.cookedWeight > 0))
@@ -704,7 +756,8 @@ export function FoodForm({
       emoji: selected.emoji,
       iconCategory: resolveFoodCategory(selected, products),
       productId: selectedProduct?.id,
-      grams: Number(grams),
+      grams: totalGrams,
+      ...(selectedProduct && unit !== "grams" ? { quantity: { unit, amount: Number(grams) } } : {}),
       nutrients,
     });
   }
@@ -722,6 +775,8 @@ export function FoodForm({
               setSelectedId("");
               setSearch("");
               setError("");
+              setUnit("grams");
+              setGrams("100");
             }}
           >
             {value === "product" ? "Продукт" : "Рецепт"}
@@ -736,6 +791,8 @@ export function FoodForm({
           onChange={(event) => {
             setSearch(event.target.value);
             setSelectedId("");
+            setUnit("grams");
+            setGrams("100");
           }}
           placeholder="Введите название"
           autoFocus
@@ -746,7 +803,7 @@ export function FoodForm({
           aria-label={mode === "product" ? "Продукт" : "Рецепт"}
           className="input"
           value={selected?.id ?? ""}
-          onValueChange={setSelectedId}
+          onValueChange={(value) => { setSelectedId(value); setUnit("grams"); setGrams("100"); setError(""); }}
           required
         >
           {!filtered.length && <option value="">Ничего не найдено</option>}
@@ -767,6 +824,18 @@ export function FoodForm({
               : "Добавьте продукт в разделе «Продукты»."}
         </p>
       )}
+      {selectedProduct && (
+        <div className="food-quantity-units">
+          <div className="segmented portion-segmented" role="group" aria-label="Единица количества">
+            {([['grams', 'Граммы'], ['serving', 'Порции'], ['piece', 'Штуки']] as const).map(([value, label]) => (
+              <button type="button" key={value} className={unit === value ? 'active' : ''} aria-pressed={unit === value}
+                disabled={value !== 'grams' && !(value === 'serving' ? selectedProduct.servingGrams : selectedProduct.pieceGrams)}
+                onClick={() => { setUnit(value); setGrams(value === 'grams' ? '100' : '1'); setError(''); }}>{label}</button>
+            ))}
+          </div>
+          {!selectedProduct.servingGrams && !selectedProduct.pieceGrams && <p className="helper">Для порций и штук задайте их вес в редакторе продукта.</p>}
+        </div>
+      )}
       <div className="form-grid">
         <Field label="Приём пищи">
           <CustomSelect
@@ -783,13 +852,19 @@ export function FoodForm({
           </CustomSelect>
         </Field>
         <NumberField
-          label="Размер порции, г"
+          label={unit === "serving" ? "Количество порций" : unit === "piece" ? "Количество штук" : "Вес, г"}
           value={grams}
           set={setGrams}
-          min={1}
-          max={5000}
+          min={0.01}
+          max={unit === "grams" ? 5000 : undefined}
         />
       </div>
+      {selectedProduct && unit !== "grams" && (
+        <p className="quantity-weight" aria-live="polite">
+          {unit === "serving" ? "Одна порция" : "Одна штука"} · {fmt(unit === "serving" ? selectedProduct.servingGrams! : selectedProduct.pieceGrams!)} г
+          {totalGrams !== null && <> <span>Всего: {fmt(totalGrams)} г</span></>}
+        </p>
+      )}
       {selectedRecipe && selectedRecipe.servings > 0 && (
         <button
           type="button"

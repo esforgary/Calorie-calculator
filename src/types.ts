@@ -20,6 +20,9 @@ export interface Product extends Nutrients {
   image?: string;
   note?: string;
   custom?: boolean;
+  /** Nutrients remain per 100 g; these weights define optional input units. */
+  servingGrams?: number;
+  pieceGrams?: number;
 }
 export interface Ingredient {
   productId: string;
@@ -46,6 +49,8 @@ export interface FoodEntry {
   iconCategory?: FoodIconCategory;
   image?: string;
   nutrients: Nutrients;
+  /** Retain the entered amount without recalculating the saved nutrient snapshot. */
+  quantity?: { unit: "serving" | "piece"; amount: number };
 }
 export type ActivityKind = "walk" | "running" | "dumbbells" | "cycling" | "gym" | "swimming" | "tennis" | "basketball";
 export interface WalkEntry {

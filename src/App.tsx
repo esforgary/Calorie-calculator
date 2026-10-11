@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { isAppData, useAppData } from "./useAppData";
 import { FoodIcon } from "./FoodIcon";
+import { ProductCard } from "./ProductCard";
 import { ActivityForm, ActivityIcon } from "./ActivityForm";
 import { ACTIVITY_KINDS, activityDefinition, isStepActivity } from "./activity";
 import { ThemeSettings } from "./ThemeSettings";
@@ -582,7 +583,7 @@ export function Diary({ store }: { store: ReturnType<typeof useAppData> }) {
           <div className="page-heading" key={`heading-${page}`}>
             <div>
               <h1>{page === "dashboard" ? "Дневник питания" : page === "profile" ? "Настройки" : pages.find((p) => p.id === page)?.name}</h1>
-              <p>{{ dashboard: "Калории и состав рациона за день", products: "Каталог продуктов · пищевая ценность на 100 г", recipes: "Состав, порции и пищевая ценность блюд", activity: "Занятия, шаги и расход энергии", sleep: "Продолжительность и расход энергии", profile: "Параметры, оформление и ваш аккаунт" }[page]}</p>
+              <p>{{ dashboard: "Калории и состав рациона за день", products: "Пищевая ценность на 100 г, порцию или штуку", recipes: "Состав, порции и пищевая ценность блюд", activity: "Занятия, шаги и расход энергии", sleep: "Продолжительность и расход энергии", profile: "Параметры, оформление и ваш аккаунт" }[page]}</p>
             </div>
             {["dashboard", "activity", "sleep"].includes(page) ? (
               datePicker
@@ -751,7 +752,7 @@ export function Diary({ store }: { store: ReturnType<typeof useAppData> }) {
                                 <div>
                                   <strong>{entry.name}</strong>
                                   <span>
-                                    {number(entry.grams)} г · Б{" "}
+                                    {entry.quantity && `${number(entry.quantity.amount, 2)} ${entry.quantity.unit === "serving" ? "порц." : "шт."} · `}{number(entry.grams, 1)} г · Б{" "}
                                     {number(entry.nutrients.protein, 1)} · Ж{" "}
                                     {number(entry.nutrients.fat, 1)} · У{" "}
                                     {number(entry.nutrients.carbs, 1)}
@@ -1043,7 +1044,7 @@ export function Diary({ store }: { store: ReturnType<typeof useAppData> }) {
                     aria-label="Поиск продуктов"
                   />
                 </label>
-                <span className="helper">Пищевая ценность на 100 г</span>
+                <span className="helper">Вес порции и штуки можно задать в редакторе продукта</span>
               </div>
               <div className="filters">
                 {["Все", "Мои продукты", ...new Set(data.products.map(p => p.category))].map((c) => (
@@ -1066,60 +1067,9 @@ export function Diary({ store }: { store: ReturnType<typeof useAppData> }) {
                         p.category === category),
                   )
                   .map((p) => (
-                    <article className="card product-card" key={p.id}>
-                      <div className="product-top">
-                        <FoodIcon food={p} size={64} />
-                        <span className="product-category">
-                          {p.custom ? "Мой продукт" : p.category}
-                        </span>
-                        {p.custom && (
-                          <div className="product-tools">
-                            <button
-                              className="icon-button"
-                              onClick={() =>
-                                setModal({ type: "product", product: p })
-                              }
-                              aria-label={`Редактировать ${p.name}`}
-                            >
-                              <Pencil size={15} />
-                            </button>
-                            <button
-                              className="icon-button delete"
-                              onClick={() => removeProduct(p)}
-                              aria-label={`Удалить ${p.name}`}
-                            >
-                              <Trash2 size={15} />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                      <h3>{p.name}</h3>
-                      <div className="product-energy">
-                        <strong>{number(p.kcal)}</strong> ккал{" "}
-                        <span>/ 100 г</span>
-                      </div>
-                      <div className="product-macros">
-                        <span>
-                          <i className="protein-bg" />Б{" "}
-                          <b>{number(p.protein, 1)}</b>
-                        </span>
-                        <span>
-                          <i className="fat-bg" />Ж <b>{number(p.fat, 1)}</b>
-                        </span>
-                        <span>
-                          <i className="carbs-bg" />У{" "}
-                          <b>{number(p.carbs, 1)}</b>
-                        </span>
-                      </div>
-                      <button
-                        className="insight-link"
-                        onClick={() => setInsight(p)}
-                      >
-                        <Leaf size={14} />
-                        Что учитывать
-                        <ArrowRight size={14} />
-                      </button>
-                    </article>
+                    <ProductCard key={p.id} product={p}
+                      onEdit={product => setModal({ type: "product", product })}
+                      onDelete={removeProduct} onInsight={setInsight} />
                   ))}
               </div>
               {!data.products.some(

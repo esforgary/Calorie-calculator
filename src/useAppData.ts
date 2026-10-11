@@ -43,6 +43,9 @@ const image = (value: unknown) => value === undefined || (text(value) && value.l
   && /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(value));
 const nutrients = (value: unknown) => record(value) && ['kcal', 'protein', 'fat', 'carbs', 'fiber'].every(key => finite(value[key]) && value[key] >= 0);
 const category = (value: unknown) => value === undefined || isFoodIconCategory(value);
+const unitWeight = (value: unknown) => value === undefined || (finite(value) && value > 0 && value <= 5000);
+const foodQuantity = (value: unknown) => value === undefined || (record(value)
+  && (value.unit === 'serving' || value.unit === 'piece') && finite(value.amount) && value.amount > 0);
 const theme = (value: unknown) => value === undefined || (record(value)
   && ['accent', 'background', 'surface'].every(key => text(value[key]) && /^#[0-9a-fA-F]{6}$/.test(value[key])));
 const listOf = (value: unknown, check: (item: Record<string, unknown>) => boolean) => Array.isArray(value) && value.every(item => record(item) && check(item));
@@ -57,12 +60,13 @@ export function isAppData(value: unknown): value is AppData {
     && ['age', 'height', 'weight', 'targetWeight', 'activity', 'stepsGoal', 'stride'].every(key => finite(p[key]))
     && Object.values(value.water).every(amount => finite(amount) && amount >= 0)
     && listOf(value.products, item => text(item.id) && text(item.name) && text(item.category) && text(item.emoji) && nutrients(item)
-      && image(item.image) && category(item.iconCategory) && (item.note === undefined || text(item.note)))
+      && image(item.image) && category(item.iconCategory) && (item.note === undefined || text(item.note))
+      && unitWeight(item.servingGrams) && unitWeight(item.pieceGrams))
     && listOf(value.recipes, item => text(item.id) && text(item.name) && text(item.emoji) && finite(item.servings) && item.servings > 0
       && finite(item.cookedWeight) && item.cookedWeight >= 0 && category(item.iconCategory) && listOf(item.ingredients, ingredient => text(ingredient.productId) && finite(ingredient.grams) && ingredient.grams >= 0))
     && listOf(value.food, item => text(item.id) && text(item.name) && text(item.date) && text(item.emoji) && finite(item.grams) && item.grams >= 0
       && ['breakfast', 'lunch', 'dinner', 'snack'].includes(String(item.meal)) && nutrients(item.nutrients) && image(item.image) && category(item.iconCategory)
-      && (item.productId === undefined || text(item.productId)))
+      && (item.productId === undefined || text(item.productId)) && foodQuantity(item.quantity))
     && listOf(value.walks, item => text(item.id) && text(item.date) && text(item.time) && ['easy', 'moderate', 'brisk'].includes(String(item.pace))
       && ['minutes', 'steps', 'distance', 'weight'].every(key => finite(item[key]) && item[key] >= 0)
       && (item.kind === undefined || (isActivityKind(item.kind) && activityValidationError(item as unknown as WalkEntry) === null)))

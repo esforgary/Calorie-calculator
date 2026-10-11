@@ -1,0 +1,89 @@
+.product-card > .product-amount-controls {
+  grid-column: 1 / -1;
+  grid-row: 3;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--context-line, var(--border));
+}
+
+.product-amount-label {
+  color: var(--context-muted, var(--surface-muted));
+  font-size: 10px;
+}
+
+.product-amount-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.product-amount-options > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 7px 13px;
+  border: 1px solid var(--context-line, var(--border));
+  border-radius: 12px;
+  background: var(--surface-soft);
+  color: var(--surface-soft-ink);
+  font-size: 11px;
+  line-height: 1.35;
+  cursor: pointer;
+  transition: background .18s ease, color .18s ease, border-color .18s ease, transform .18s ease;
+}
+
+.product-amount-options > button:hover {
+  background: var(--surface-tint);
+  color: var(--surface-tint-ink);
+}
+
+.product-amount-options > button[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--accent);
+}
+
+.product-amount-options > button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 3px;
+}
+
+.product-amount-options > button small {
+  color: inherit;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.product-card-with-amounts > .product-energy > span {
+  white-space: normal;
+}
+
+@media (max-width: 700px) {
+  .product-card > .product-amount-controls {
+    grid-row: 5;
+    display: block;
+    margin-top: 6px;
+  }
+  .product-amount-label { display: none; }
+  .product-amount-options { gap: 5px; }
+  .product-amount-options > button {
+    flex: 1;
+    flex-direction: column;
+    gap: 2px;
+    min-height: 44px;
+    padding: 6px 9px;
+    font-size: 10px;
+  }
+  .product-amount-options > button small { font-size: 9px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .product-amount-options > button { transition: none; }
+}

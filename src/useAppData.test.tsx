@@ -356,4 +356,44 @@ describe('useAppData lifecycle and ownership', () => {
     expect(isAppData({ ...data, recipes: [{ id: 'recipe', name: 'Суп', emoji: '🥣', servings: 1, cookedWeight: 100, ingredients: [], iconCategory: 'soup' }] })).toBe(true);
     expect(isAppData({ ...data, recipes: [{ id: 'recipe', name: 'Суп', emoji: '🥣', servings: 1, cookedWeight: 100, ingredients: [], iconCategory: 'invalid' }] })).toBe(false);
   });
+
+  it('imports legacy diaries and new portion metadata without changing saved grams or nutrients', () => {
+    const data = createInitialData();
+    const entry = {
+      id: 'portion-meal', date: '2026-10-11', meal: 'breakfast', name: 'Сыр', grams: 40, emoji: '🧀',
+      nutrients: { kcal: 128, protein: 9.6, fat: 8, carbs: 3.2, fiber: 0.8 },
+    };
+    const legacy = JSON.parse(JSON.stringify({ ...data, food: [entry] }));
+    expect(isAppData(legacy)).toBe(true);
+    const imported = JSON.parse(JSON.stringify({ ...data,
+      products: [{ ...data.products[0], servingGrams: 40, pieceGrams: 25 }],
+      food: [{ ...entry, quantity: { unit: 'serving', amount: 1 } },
+        { ...entry, id: 'piece-meal', quantity: { unit: 'piece', amount: 1.5 } }],
+    }));
+    expect(isAppData(imported)).toBe(true);
+    expect(imported.food[0].grams).toBe(40);
+    expect(imported.food[0].nutrients).toEqual(entry.nutrients);
+    expect(imported.food[1].quantity).toEqual({ unit: 'piece', amount: 1.5 });
+  });
+
+  it('rejects malformed portion weights and quantities in imported data', () => {
+    const data = createInitialData();
+    for (const key of ['servingGrams', 'pieceGrams']) {
+      for (const weight of [null, 0, -1, NaN, Infinity, 5000.01, '40']) {
+        expect(isAppData({ ...data, products: [{ ...data.products[0], [key]: weight }] })).toBe(false);
+      }
+      for (const weight of [0.5, 40, 5000]) {
+        expect(isAppData({ ...data, products: [{ ...data.products[0], [key]: weight }] })).toBe(true);
+      }
+    }
+    const entry = {
+      id: 'meal', date: '2026-10-11', meal: 'breakfast', name: 'Сыр', grams: 40, emoji: '🧀',
+      nutrients: { kcal: 128, protein: 9.6, fat: 8, carbs: 3.2, fiber: 0.8 },
+    };
+    for (const quantity of [null, {}, [], { unit: 'grams', amount: 40 }, { unit: 'piece', amount: 0 },
+      { unit: 'serving', amount: -1 }, { unit: 'serving', amount: NaN }, { unit: 'piece', amount: Infinity },
+      { unit: 'piece', amount: '1' }]) {
+      expect(isAppData({ ...data, food: [{ ...entry, quantity }] })).toBe(false);
+    }
+  });
 });
