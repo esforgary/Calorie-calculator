@@ -1,0 +1,408 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { Dispatch, SetStateAction } from 'react';
+import type { User } from '@supabase/supabase-js';
+import type { AppData } from './types';
+import { createInitialData } from './seed';
+import { configured, supabase, supabaseConfigurationError } from './supabase';
+
+interface Cache {
+  cacheVersion: 1;
+  data: AppData;
+  revision: number | null;
+  dirty: boolean;
+  updatedAt: string | null;
+}
+interface ActiveDiary extends Cache {
+  owner: string | null;
+  hydrated: boolean;
+  loading: boolean;
+  editable: boolean;
+  cached: boolean;
+  conflicted: boolean;
+  savedLocally: boolean;
+  damagedSource: string | null;
+  damagedBackupKey: string;
+  recoveryBlocked: boolean;
+  sequence: number;
+  controller: AbortController;
+}
+interface CloudRow { data: unknown; revision: number; updated_at: string }
+type Account = { id: string; email?: string } | null;
+const GUEST_KEY = 'kall:diary:guest:v1';
+const keyFor = (owner: string | null) => owner ? `kall:diary:${owner}:v1` : GUEST_KEY;
+const conflictMessage = 'Дневник изменён на другом устройстве. Ваши правки сохранены локально. Экспортируйте их перед загрузкой облачной версии.';
+const record = (value: unknown): value is Record<string, unknown> => Boolean(value && typeof value === 'object' && !Array.isArray(value));
+const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
+const text = (value: unknown): value is string => typeof value === 'string';
+const image = (value: unknown) => value === undefined || (text(value) && value.length <= 480000
+  && /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(value));
+const nutrients = (value: unknown) => record(value) && ['kcal', 'protein', 'fat', 'carbs', 'fiber'].every(key => finite(value[key]) && value[key] >= 0);
+const listOf = (value: unknown, check: (item: Record<string, unknown>) => boolean) => Array.isArray(value) && value.every(item => record(item) && check(item));
+
+/** Validate storage/imported JSON before the interface performs calculations on it. */
+export function isAppData(value: unknown): value is AppData {
+  if (!record(value) || value.version !== 1 || !record(value.profile) || !record(value.water)) return false;
+  const p = value.profile;
+  return text(p.name) && ['female', 'male'].includes(String(p.sex)) && ['lose', 'maintain'].includes(String(p.goal))
+    && typeof p.configured === 'boolean'
+    && ['age', 'height', 'weight', 'targetWeight', 'activity', 'stepsGoal', 'stride'].every(key => finite(p[key]))
+    && Object.values(value.water).every(amount => finite(amount) && amount >= 0)
+    && listOf(value.products, item => text(item.id) && text(item.name) && text(item.category) && text(item.emoji) && nutrients(item)
+      && image(item.image) && (item.note === undefined || text(item.note)))
+    && listOf(value.recipes, item => text(item.id) && text(item.name) && text(item.emoji) && finite(item.servings) && item.servings > 0
+      && finite(item.cookedWeight) && item.cookedWeight >= 0 && listOf(item.ingredients, ingredient => text(ingredient.productId) && finite(ingredient.grams) && ingredient.grams >= 0))
+    && listOf(value.food, item => text(item.id) && text(item.name) && text(item.date) && text(item.emoji) && finite(item.grams) && item.grams >= 0
+      && ['breakfast', 'lunch', 'dinner', 'snack'].includes(String(item.meal)) && nutrients(item.nutrients) && image(item.image)
+      && (item.productId === undefined || text(item.productId)))
+    && listOf(value.walks, item => text(item.id) && text(item.date) && text(item.time) && ['easy', 'moderate', 'brisk'].includes(String(item.pace))
+      && ['minutes', 'steps', 'distance', 'weight'].every(key => finite(item[key]) && item[key] >= 0))
+    && listOf(value.sleep, item => text(item.id) && text(item.date) && text(item.bedtime) && text(item.wakeTime) && finite(item.weight) && item.weight >= 0);
+}
+
+function loadCache(owner: string | null): { diary: ActiveDiary; error: string | null } {
+  let cached: Cache | null = null;
+  let error: string | null = null;
+  let raw: string | null = null;
+  let damagedSource: string | null = null;
+  try {
+    raw = window.localStorage.getItem(keyFor(owner));
+  } catch {
+    error = 'Хранилище браузера недоступно. Для сохранности данных используйте экспорт.';
+  }
+  try {
+    if (raw !== null) {
+      const value: unknown = JSON.parse(raw);
+      if (!record(value) || value.cacheVersion !== 1 || !isAppData(value.data)
+        || !(value.revision === null || (Number.isSafeInteger(value.revision) && Number(value.revision) > 0))
+        || typeof value.dirty !== 'boolean' || !(value.updatedAt === null || text(value.updatedAt))) {
+        throw new Error('Invalid diary cache');
+      }
+      cached = value as unknown as Cache;
+    }
+  } catch {
+    damagedSource = raw;
+    error = 'Локальная копия повреждена. Исходная запись сохранена; перед заменой будет создана резервная копия. Восстановите дневник из экспорта или облака.';
+  }
+  return {
+    diary: {
+      ...(cached ?? { cacheVersion: 1, data: createInitialData(), revision: null, dirty: false, updatedAt: null }),
+      owner, hydrated: !owner, loading: false, editable: !owner, cached: Boolean(cached), conflicted: false,
+      savedLocally: Boolean(cached), sequence: 0, controller: new AbortController(),
+      damagedSource, damagedBackupKey: `${keyFor(owner)}:corrupt-backup:${Date.now()}`,
+      recoveryBlocked: false,
+    },
+    error,
+  };
+}
+
+function storeCache(diary: ActiveDiary): string | null {
+  const cache: Cache = { cacheVersion: 1, data: diary.data, revision: diary.revision, dirty: diary.dirty, updatedAt: diary.updatedAt };
+  try {
+    if (diary.damagedSource !== null) {
+      // Never replace malformed JSON until its exact source has a durable backup.
+      window.localStorage.setItem(diary.damagedBackupKey, diary.damagedSource);
+      diary.damagedSource = null;
+    }
+    window.localStorage.setItem(keyFor(diary.owner), JSON.stringify(cache));
+    if (diary.recoveryBlocked) diary.editable = !diary.loading && (!diary.owner || diary.hydrated || diary.cached);
+    diary.recoveryBlocked = false;
+    diary.savedLocally = true;
+    diary.cached = true;
+    return null;
+  } catch {
+    if (diary.damagedSource !== null) { diary.recoveryBlocked = true; diary.editable = false; }
+    diary.savedLocally = false;
+    return 'Не удалось сохранить в браузере: хранилище заполнено или отключено. Экспортируйте дневник, пока эта вкладка открыта; уменьшите количество фото.';
+  }
+}
+
+function errorText(cause: unknown): string {
+  const message = cause instanceof Error ? cause.message : record(cause) && text(cause.message) ? cause.message : 'Неизвестная ошибка';
+  if (/Invalid login credentials/i.test(message)) return 'Неверный email или пароль.';
+  if (/Email not confirmed/i.test(message)) return 'Подтвердите email по ссылке из письма Supabase.';
+  if (/User already registered/i.test(message)) return 'Аккаунт с этим email уже зарегистрирован.';
+  if (/signup.*disabled|signups.*allowed/i.test(message)) return 'Регистрация отключена. Войдите в существующий аккаунт.';
+  if (/kall_diaries_size_limit/i.test(message)) return 'Дневник превысил облачный лимит 4 МБ. Экспортируйте данные и уменьшите количество фотографий.';
+  if (/permission denied|row-level security/i.test(message)) return 'Нет доступа к дневнику. Проверьте вход в аккаунт и политики доступа из supabase/schema.sql.';
+  if (/schema cache|relation .* does not exist/i.test(message)) return 'Таблица дневника пока не настроена. Выполните supabase/schema.sql в SQL Editor проекта Supabase и нажмите «Повторить». Другие таблицы не меняются.';
+  if (/fetch|network|timeout/i.test(message)) return 'Нет соединения с облаком. Проверьте интернет и повторите синхронизацию.';
+  return message;
+}
+
+export function useAppData() {
+  const [initial] = useState(() => loadCache(null));
+  const [data, setDataState] = useState(initial.diary.data);
+  const [user, setUser] = useState<Account>(null);
+  const [authReady, setAuthReady] = useState(!configured);
+  const [canEdit, setCanEdit] = useState(!configured);
+  const [authPending, setAuthPending] = useState(false);
+  const [syncStatus, setSyncStatus] = useState(configured ? 'Подключение…' : 'На устройстве');
+  const [error, setError] = useState<string | null>(supabaseConfigurationError ?? initial.error);
+  const [conflict, setConflict] = useState(false);
+  const active = useRef(initial.diary);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const saveAction = useRef<() => Promise<void>>(async () => {});
+  const loadAction = useRef<(discardLocal?: boolean) => Promise<void>>(async () => {});
+  const inFlight = useRef<Promise<void> | null>(null);
+  const authBusy = useRef(false);
+  const initialized = useRef(!configured);
+
+  const schedule = useCallback(() => {
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => { void saveAction.current(); }, 700);
+  }, []);
+
+  const setData: Dispatch<SetStateAction<AppData>> = useCallback(update => {
+    const diary = active.current;
+    if (!initialized.current || authBusy.current || diary.loading || !diary.editable) {
+      setError('Дождитесь загрузки дневника или повторите подключение к облаку.');
+      return;
+    }
+    const next = typeof update === 'function' ? update(diary.data) : update;
+    if (!isAppData(next)) { setError('Не удалось сохранить: данные дневника имеют неверный формат.'); return; }
+    diary.data = next;
+    diary.sequence += 1;
+    diary.dirty = Boolean(diary.owner);
+    setDataState(next);
+    const storageError = storeCache(diary);
+    setCanEdit(diary.editable);
+    setError(storageError ?? (diary.conflicted ? conflictMessage : null));
+    setSyncStatus(diary.owner ? (diary.conflicted ? 'Конфликт версий' : 'Есть изменения') : (storageError ? 'Не сохранено' : 'На устройстве'));
+    if (diary.owner && diary.hydrated && !diary.conflicted) schedule();
+  }, [schedule]);
+
+  useEffect(() => {
+    if (!supabase) return;
+    const client = supabase;
+    let disposed = false;
+    let identity: string | null | undefined;
+    const current = (diary: ActiveDiary) => !disposed && active.current === diary && !diary.controller.signal.aborted;
+    const markConflict = (diary: ActiveDiary) => {
+      diary.conflicted = true;
+      diary.hydrated = true;
+      diary.editable = true;
+      setCanEdit(!diary.loading);
+      setConflict(true);
+      setSyncStatus('Конфликт версий');
+      const storageError = storeCache(diary);
+      setCanEdit(diary.editable && !diary.loading);
+      setError(storageError ? `${storageError} Есть конфликт с облачной версией.` : conflictMessage);
+    };
+
+    const save = async (): Promise<void> => {
+      const diary = active.current;
+      if (!current(diary) || !diary.owner || !diary.hydrated || diary.loading || !diary.dirty || diary.conflicted) return;
+      if (inFlight.current) { await inFlight.current; if (current(diary) && diary.dirty) schedule(); return; }
+      const payload = diary.data;
+      const sequence = diary.sequence;
+      const revision = diary.revision;
+      setSyncStatus('Сохранение…');
+      const operation = (async () => {
+        try {
+          const query = revision === null
+            ? client.from('kall_diaries').insert({ user_id: diary.owner, data: payload }).select('revision,updated_at')
+            : client.from('kall_diaries').update({ data: payload }).eq('user_id', diary.owner).eq('revision', revision).select('revision,updated_at');
+          const result = await query.abortSignal(diary.controller.signal).maybeSingle();
+          if (!current(diary)) return;
+          if (result.error?.code === '23505' || (!result.error && !result.data)) { markConflict(diary); return; }
+          if (result.error) throw result.error;
+          if (!result.data || !Number.isSafeInteger(result.data.revision)) throw new Error('Облако вернуло неверную версию дневника. Проверьте SQL-схему.');
+          diary.revision = Number(result.data.revision);
+          diary.updatedAt = String(result.data.updated_at);
+          diary.dirty = diary.sequence !== sequence;
+          const storageError = storeCache(diary);
+          setError(storageError);
+          setSyncStatus(diary.dirty ? 'Есть изменения' : 'В облаке');
+          if (diary.dirty) schedule();
+        } catch (cause) {
+          if (!current(diary)) return;
+          setError(`${errorText(cause)} ${diary.savedLocally ? 'Правки сохранены на этом устройстве.' : 'Правки остаются только в открытой вкладке. Экспортируйте дневник.'}`);
+          setSyncStatus('Нет синхронизации');
+        }
+      })();
+      inFlight.current = operation;
+      await operation;
+      if (inFlight.current === operation) inFlight.current = null;
+    };
+
+    const hydrate = async (discardLocal = false): Promise<void> => {
+      const diary = active.current;
+      if (!current(diary) || !diary.owner || diary.loading) return;
+      // Block edits throughout the read so a late response cannot replace a new edit.
+      diary.loading = true;
+      diary.editable = false;
+      setCanEdit(false);
+      clearTimeout(timer.current);
+      setSyncStatus('Загрузка…');
+      try {
+        if (inFlight.current) await inFlight.current;
+        if (!current(diary)) return;
+        diary.hydrated = false;
+        const { data: result, error: loadError } = await client.from('kall_diaries')
+          .select('data,revision,updated_at').eq('user_id', diary.owner).abortSignal(diary.controller.signal).maybeSingle();
+        if (!current(diary)) return;
+        if (loadError) throw loadError;
+        const row = result as CloudRow | null;
+        if (row && (!isAppData(row.data) || !Number.isSafeInteger(row.revision) || row.revision < 1)) {
+          throw new Error('Облачный дневник имеет неподдерживаемый формат. Локальная копия сохранена.');
+        }
+        if (diary.dirty && !discardLocal && diary.revision !== (row?.revision ?? null)) { markConflict(diary); return; }
+        if (discardLocal && diary.dirty) {
+          // Keep one recoverable copy; never discard edits if the backup cannot be stored.
+          try { window.localStorage.setItem(`${keyFor(diary.owner)}:conflict-backup`, JSON.stringify(diary.data)); }
+          catch { throw new Error('Не удалось создать резервную копию. Сначала экспортируйте данные и освободите хранилище браузера.'); }
+        }
+        if (!diary.dirty || discardLocal) {
+          diary.data = row ? row.data as AppData : createInitialData();
+          diary.revision = row?.revision ?? null;
+          diary.updatedAt = row?.updated_at ?? null;
+          diary.dirty = false;
+          setDataState(diary.data);
+        }
+        diary.hydrated = true;
+        diary.editable = true;
+        setCanEdit(true);
+        diary.conflicted = false;
+        setConflict(false);
+        setError(storeCache(diary));
+        setSyncStatus(diary.dirty ? 'Есть изменения' : 'В облаке');
+        if (diary.dirty) schedule();
+      } catch (cause) {
+        if (!current(diary)) return;
+        diary.editable = diary.cached;
+        setCanEdit(diary.editable);
+        setError(errorText(cause));
+        setSyncStatus('Нет синхронизации');
+      } finally {
+        if (current(diary)) {
+          diary.loading = false;
+          setCanEdit(diary.editable);
+          initialized.current = true;
+          setAuthReady(true);
+        }
+      }
+    };
+
+    const changeAccount = (account: User | null) => {
+      if (disposed) return;
+      const id = account?.id ?? null;
+      if (identity === id) { setUser(account ? { id: account.id, email: account.email } : null); return; }
+      identity = id;
+      clearTimeout(timer.current);
+      active.current.controller.abort();
+      inFlight.current = null;
+      initialized.current = false;
+      setCanEdit(false);
+      setAuthReady(false);
+      const loaded = loadCache(id);
+      active.current = loaded.diary;
+      setDataState(loaded.diary.data);
+      setUser(account ? { id: account.id, email: account.email } : null);
+      setConflict(false);
+      setError(loaded.error);
+      if (account) { void hydrate(); }
+      else {
+        initialized.current = true;
+        setCanEdit(true);
+        setAuthReady(true);
+        setSyncStatus('На устройстве');
+      }
+    };
+
+    saveAction.current = save;
+    loadAction.current = hydrate;
+    const { data: subscription } = client.auth.onAuthStateChange((_event, session) => {
+      // Supabase callbacks must return before another auth/database request starts.
+      queueMicrotask(() => changeAccount(session?.user ?? null));
+    });
+    void client.auth.getSession().then(({ data: sessionData, error: sessionError }) => {
+      if (disposed) return;
+      if (sessionError) { setError(errorText(sessionError)); setAuthReady(true); return; }
+      if (identity === undefined) changeAccount(sessionData.session?.user ?? null);
+    }).catch(cause => { if (!disposed) { setError(errorText(cause)); setAuthReady(true); } });
+    const reconnect = () => {
+      if (active.current.owner && !active.current.conflicted && !authBusy.current) {
+        if (active.current.hydrated) void save(); else void hydrate();
+      }
+    };
+    window.addEventListener('online', reconnect);
+    return () => {
+      disposed = true;
+      clearTimeout(timer.current);
+      active.current.controller.abort();
+      subscription.subscription.unsubscribe();
+      window.removeEventListener('online', reconnect);
+    };
+  }, [schedule]);
+
+  useEffect(() => {
+    const warnUnsaved = (event: BeforeUnloadEvent) => {
+      if (!active.current.savedLocally && active.current.sequence > 0) { event.preventDefault(); event.returnValue = ''; }
+    };
+    window.addEventListener('beforeunload', warnUnsaved);
+    return () => window.removeEventListener('beforeunload', warnUnsaved);
+  }, []);
+
+  const signIn = useCallback(async (email: string, password: string): Promise<void> => {
+    if (!supabase) throw new Error('Сначала настройте подключение к Supabase.');
+    if (authBusy.current) throw new Error('Дождитесь завершения входа или выхода.');
+    if (active.current.owner) throw new Error('Сначала выйдите из текущего аккаунта.');
+    if (active.current.sequence > 0 && !active.current.savedLocally) throw new Error('Локальные правки не сохранены. Экспортируйте дневник перед входом.');
+    authBusy.current = true;
+    setAuthPending(true);
+    try {
+      const result = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+      if (result.error) throw new Error(errorText(result.error));
+    } finally { authBusy.current = false; setAuthPending(false); }
+  }, []);
+
+  const signUp = useCallback(async (email: string, password: string): Promise<string> => {
+    if (!supabase) throw new Error('Сначала настройте подключение к Supabase.');
+    if (authBusy.current) throw new Error('Дождитесь завершения входа или выхода.');
+    if (active.current.owner) throw new Error('Сначала выйдите из текущего аккаунта.');
+    if (active.current.sequence > 0 && !active.current.savedLocally) throw new Error('Локальные правки не сохранены. Экспортируйте дневник перед регистрацией.');
+    authBusy.current = true;
+    setAuthPending(true);
+    try {
+      const result = await supabase.auth.signUp({
+        email: email.trim(), password,
+        options: { emailRedirectTo: new URL(window.location.pathname, window.location.origin).href },
+      });
+      if (result.error) throw new Error(errorText(result.error));
+      return result.data.session ? 'Аккаунт создан, вы вошли.' : 'Проверьте почту и подтвердите email по ссылке в письме. Затем войдите.';
+    } finally { authBusy.current = false; setAuthPending(false); }
+  }, []);
+
+  const signOut = useCallback(async (): Promise<void> => {
+    if (!supabase) return;
+    if (authBusy.current) throw new Error('Дождитесь завершения входа или выхода.');
+    authBusy.current = true;
+    setAuthPending(true);
+    clearTimeout(timer.current);
+    try {
+      await saveAction.current();
+      if (inFlight.current) await inFlight.current;
+      clearTimeout(timer.current);
+      if (active.current.dirty && !active.current.savedLocally) throw new Error('Правки не сохранены. Экспортируйте дневник перед выходом.');
+      const result = await supabase.auth.signOut({ scope: 'local' });
+      if (result.error) throw new Error(errorText(result.error));
+    } finally { authBusy.current = false; setAuthPending(false); }
+  }, []);
+
+  const retrySync = useCallback(() => {
+    if (authBusy.current) return;
+    if (!active.current.owner) {
+      setError(storeCache(active.current) ?? supabaseConfigurationError);
+      setCanEdit(active.current.editable);
+      return;
+    }
+    if (!active.current.hydrated || active.current.conflicted) void loadAction.current();
+    else void saveAction.current();
+  }, []);
+  const useCloudVersion = useCallback(async () => {
+    if (!active.current.conflicted || authBusy.current) return;
+    await loadAction.current(true);
+  }, []);
+
+  return { data, setData, user, authReady, editable: canEdit && authReady && !authPending, configured, syncStatus, error, signIn, signUp, signOut, retrySync, conflict, useCloudVersion };
+}

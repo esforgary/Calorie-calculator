@@ -1,0 +1,2148 @@
+import { useEffect, useRef, useState } from "react";
+import type { FormEvent, ReactNode } from "react";
+import {
+  ArrowDownToLine,
+  ArrowRight,
+  BookOpen,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  CircleHelp,
+  Cloud,
+  Droplets,
+  Flame,
+  Footprints,
+  LayoutDashboard,
+  Leaf,
+  LogOut,
+  Menu,
+  Moon,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Search,
+  Settings2,
+  Sparkles,
+  Sun,
+  Sunrise,
+  Trash2,
+  Utensils,
+  X,
+} from "lucide-react";
+import { isAppData, useAppData } from "./useAppData";
+import {
+  calculateProfile,
+  dateOffset,
+  productInsights,
+  recipeNutrients,
+  scaleNutrients,
+  sleepCalories,
+  sleepHours,
+  sumNutrients,
+  today,
+  walkStats,
+} from "./nutrition";
+import {
+  FoodForm,
+  ProductForm,
+  ProfileForm,
+  RecipeForm,
+  SleepForm,
+  WalkForm,
+} from "./Forms";
+import type {
+  FoodEntry,
+  MealType,
+  Product,
+  Recipe,
+  SleepEntry,
+  WalkEntry,
+} from "./types";
+
+type Page =
+  "dashboard" | "products" | "recipes" | "activity" | "sleep" | "profile";
+type ModalState =
+  | { type: "food"; meal: MealType }
+  | { type: "product"; product?: Product }
+  | { type: "recipe"; recipe?: Recipe }
+  | { type: "walk" | "sleep" | "auth" | "about" }
+  | null;
+const pages = [
+  { id: "dashboard", name: "Мой день", icon: LayoutDashboard },
+  { id: "products", name: "Продукты", icon: Utensils },
+  { id: "recipes", name: "Мои рецепты", icon: BookOpen },
+  { id: "activity", name: "Активность", icon: Footprints },
+  { id: "sleep", name: "Сон и отдых", icon: Moon },
+] as const;
+const meals: { id: MealType; name: string; time: string; icon: typeof Sun }[] =
+  [
+    {
+      id: "breakfast",
+      name: "Завтрак",
+      time: "Начало хорошего дня",
+      icon: Sunrise,
+    },
+    { id: "lunch", name: "Обед", time: "Время подкрепиться", icon: Sun },
+    {
+      id: "dinner",
+      name: "Ужин",
+      time: "Спокойное завершение дня",
+      icon: Moon,
+    },
+    { id: "snack", name: "Перекус", time: "Небольшая пауза", icon: Leaf },
+  ];
+const number = (n: number, digits = 0) =>
+  new Intl.NumberFormat("ru-RU", { maximumFractionDigits: digits }).format(n);
+const dateLabel = (date: string, long = false) =>
+  new Date(`${date}T12:00:00`).toLocaleDateString(
+    "ru-RU",
+    long
+      ? { day: "numeric", month: "long", weekday: "long" }
+      : { day: "numeric", month: "long" },
+  );
+const percent = (n: number, total: number) =>
+  total > 0 ? Math.min(100, Math.max(0, (n / total) * 100)) : 0;
+
+function Modal({
+  title,
+  subtitle,
+  children,
+  onClose,
+  wide = false,
+}: {
+  title: string;
+  subtitle?: string;
+  children: ReactNode;
+  onClose: () => void;
+  wide?: boolean;
+}) {
+  const box = useRef<HTMLDivElement>(null);
+  const close = useRef(onClose);
+  close.current = onClose;
+  useEffect(() => {
+    const active = document.activeElement as HTMLElement | null;
+    const oldOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const element = box.current;
+    element
+      ?.querySelector<HTMLElement>("input, button, select, textarea")
+      ?.focus();
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") close.current();
+      if (event.key === "Tab" && element) {
+        const nodes = [
+          ...element.querySelectorAll<HTMLElement>(
+            "button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href]",
+          ),
+        ].filter((node) => node.getClientRects().length);
+        const first = nodes[0],
+          last = nodes[nodes.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last?.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first?.focus();
+        }
+      }
+    };
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.body.style.overflow = oldOverflow;
+      document.removeEventListener("keydown", handleKey);
+      active?.focus();
+    };
+  }, []);
+  return (
+    <div
+      className="modal-backdrop"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        className={`modal ${wide ? "wide" : ""}`}
+        ref={box}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="modal-title"
+      >
+        <div className="modal-heading">
+          <div>
+            <h2 id="modal-title">{title}</h2>
+            {subtitle && <p>{subtitle}</p>}
+          </div>
+          <button
+            className="icon-button"
+            onClick={onClose}
+            aria-label="Закрыть окно"
+          >
+            <X size={21} />
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function FoodImage({
+  image,
+  emoji,
+  className = "",
+}: {
+  image?: string;
+  emoji: string;
+  className?: string;
+}) {
+  return (
+    <span className={`food-image ${className}`}>
+      {image ? (
+        <img src={image} alt="" />
+      ) : (
+        <span aria-hidden="true">{emoji}</span>
+      )}
+    </span>
+  );
+}
+
+function Ring({ value, total }: { value: number; total: number }) {
+  const filled = percent(value, total);
+  return (
+    <div className="calorie-ring">
+      <svg viewBox="0 0 220 220" aria-hidden="true">
+        <circle cx="110" cy="110" r="94" className="ring-track" />
+        <circle
+          cx="110"
+          cy="110"
+          r="94"
+          className={`ring-value ${value > total && total > 0 ? "over" : ""}`}
+          strokeDasharray={`${filled * 5.906} 590.6`}
+        />
+      </svg>
+      <div className="ring-label">
+        <Flame size={21} />
+        <strong>{number(value)}</strong>
+        <span>ккал съедено</span>
+      </div>
+    </div>
+  );
+}
+
+function Macro({
+  label,
+  value,
+  goal,
+  color,
+}: {
+  label: string;
+  value: number;
+  goal: number;
+  color: string;
+}) {
+  return (
+    <div className="macro">
+      <div>
+        <span>
+          <i style={{ background: color }} />
+          {label}
+        </span>
+        <strong>
+          {number(value)} <small>/ {goal || "—"} г</small>
+        </strong>
+      </div>
+      <div className="track">
+        <span
+          style={{ width: `${percent(value, goal)}%`, background: color }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function AuthPanel({
+  configured,
+  onSignIn,
+  onSignUp,
+  onDone,
+}: {
+  configured: boolean;
+  onSignIn: (email: string, password: string) => Promise<void>;
+  onSignUp: (email: string, password: string) => Promise<string>;
+  onDone: () => void;
+}) {
+  const [mode, setMode] = useState<"login" | "register">("login");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  async function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setBusy(true);
+    setMessage("");
+    setError("");
+    const values = new FormData(e.currentTarget);
+    try {
+      if (mode === "login") {
+        await onSignIn(
+          String(values.get("email")).trim(),
+          String(values.get("password")),
+        );
+        onDone();
+      } else
+        setMessage(
+          await onSignUp(
+            String(values.get("email")).trim(),
+            String(values.get("password")),
+          ),
+        );
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? e.message
+          : "Не удалось войти. Попробуйте ещё раз.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+  if (!configured)
+    return (
+      <div className="notice">
+        Сейчас работает локальный дневник. Для входа настройте Supabase по
+        инструкции в README проекта.
+      </div>
+    );
+  return (
+    <form className="form-stack" onSubmit={submit}>
+      <div className="segmented">
+        <button
+          type="button"
+          className={mode === "login" ? "active" : ""}
+          onClick={() => {
+            setMode("login");
+            setError("");
+            setMessage("");
+          }}
+        >
+          Вход
+        </button>
+        <button
+          type="button"
+          className={mode === "register" ? "active" : ""}
+          onClick={() => {
+            setMode("register");
+            setError("");
+            setMessage("");
+          }}
+        >
+          Создать аккаунт
+        </button>
+      </div>
+      <label className="field">
+        Email
+        <input
+          autoComplete="email"
+          name="email"
+          type="email"
+          required
+          placeholder="you@example.com"
+        />
+      </label>
+      <label className="field">
+        Пароль
+        <input
+          name="password"
+          type="password"
+          minLength={8}
+          maxLength={128}
+          required
+          autoComplete={mode === "login" ? "current-password" : "new-password"}
+          placeholder="Не менее 8 символов"
+        />
+      </label>
+      <p className="helper">
+        После входа откроется отдельный облачный дневник. Локальные записи
+        останутся в этом браузере.
+      </p>
+      {message && (
+        <div className="notice" role="status">
+          {message}
+        </div>
+      )}
+      {error && (
+        <p className="error-text" role="alert">
+          {error}
+        </p>
+      )}
+      <button className="button primary full-width" disabled={busy}>
+        {busy
+          ? "Подождите…"
+          : mode === "login"
+            ? "Войти в дневник"
+            : "Зарегистрироваться"}
+        <ArrowRight size={17} />
+      </button>
+    </form>
+  );
+}
+
+export default function App() {
+  const store = useAppData();
+  const { data, setData, user } = store;
+  const identityRef = useRef(user?.id ?? "guest");
+  identityRef.current = user?.id ?? "guest";
+  const editableRef = useRef(store.editable);
+  editableRef.current = store.editable;
+  const [page, setPage] = useState<Page>("dashboard");
+  const [date, setDate] = useState(today());
+  const [modal, setModal] = useState<ModalState>(null);
+  const [menu, setMenu] = useState(false);
+  const [search, setSearch] = useState("");
+  const [category, setCategory] = useState("Все");
+  const [toast, setToast] = useState("");
+  const [confirm, setConfirm] = useState<{
+    text: string;
+    action: () => void;
+  } | null>(null);
+  const [insight, setInsight] = useState<Product | null>(null);
+  const profile = calculateProfile(data.profile);
+  const hasProfile = data.profile.configured;
+  const nutrients = sumNutrients(
+    data.food.filter((e) => e.date === date).map((e) => e.nutrients),
+  );
+  const walks = data.walks.filter((e) => e.date === date);
+  const sleep = data.sleep.filter((e) => e.date === date);
+  const totalSteps = walks.reduce((sum, w) => sum + w.steps, 0);
+  const activeCalories = walks.reduce((sum, w) => sum + walkStats(w).active, 0);
+  const totalMinutes = walks.reduce((sum, w) => sum + w.minutes, 0);
+  const totalDistance = walks.reduce((sum, w) => sum + w.distance, 0);
+  const totalSleep = sleep.reduce(
+    (sum, s) => sum + sleepHours(s.bedtime, s.wakeTime),
+    0,
+  );
+  const water = data.water[date] || 0;
+  const target = hasProfile ? profile.target : 0;
+  const isToday = date === today();
+  useEffect(() => {
+    if (!toast) return;
+    const timeout = window.setTimeout(() => setToast(""), 4500);
+    return () => clearTimeout(timeout);
+  }, [toast]);
+  useEffect(() => {
+    document.title = `${page === "profile" ? "Профиль и цели" : pages.find((p) => p.id === page)?.name} · Калл`;
+  }, [page]);
+  useEffect(() => {
+    setModal(null);
+    setConfirm(null);
+    setInsight(null);
+  }, [user?.id]);
+  useEffect(() => {
+    if (!menu) return;
+    const escape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenu(false);
+    };
+    document.addEventListener("keydown", escape);
+    return () => document.removeEventListener("keydown", escape);
+  }, [menu]);
+  const notify = (message: string) => {
+    setToast(message);
+    setModal(null);
+  };
+  const go = (next: Page) => {
+    setPage(next);
+    setMenu(false);
+    setSearch("");
+  };
+  const openTracked = (type: "walk" | "sleep") => {
+    if (!hasProfile) {
+      go("profile");
+      setToast("Сначала укажите параметры для расчёта расхода энергии");
+    } else setModal({ type });
+  };
+  function canEdit() {
+    if (editableRef.current) return true;
+    setToast("Дождитесь загрузки дневника или повторите подключение");
+    return false;
+  }
+  function saveFood(entry: FoodEntry) {
+    if (!canEdit()) return;
+    setData((d) => ({ ...d, food: [...d.food, entry] }));
+    notify("Добавлено в дневник");
+  }
+  function saveProduct(product: Product) {
+    if (!canEdit()) return;
+    setData((d) => ({
+      ...d,
+      products: d.products.some((p) => p.id === product.id)
+        ? d.products.map((p) => (p.id === product.id ? product : p))
+        : [...d.products, product],
+    }));
+    notify("Продукт сохранён");
+  }
+  function saveRecipe(recipe: Recipe) {
+    if (!canEdit()) return;
+    setData((d) => ({
+      ...d,
+      recipes: d.recipes.some((r) => r.id === recipe.id)
+        ? d.recipes.map((r) => (r.id === recipe.id ? recipe : r))
+        : [...d.recipes, recipe],
+    }));
+    notify("Рецепт сохранён");
+  }
+  function saveWalk(entry: WalkEntry) {
+    if (!canEdit()) return;
+    setData((d) => ({ ...d, walks: [...d.walks, entry] }));
+    notify("Прогулка записана");
+  }
+  function saveSleep(entry: SleepEntry) {
+    if (!canEdit()) return;
+    if (
+      data.sleep.some(
+        (s) =>
+          new Date(entry.bedtime) < new Date(s.wakeTime) &&
+          new Date(entry.wakeTime) > new Date(s.bedtime),
+      )
+    ) {
+      setToast("Этот интервал пересекается с уже записанным сном");
+      return;
+    }
+    setData((d) => ({ ...d, sleep: [...d.sleep, entry] }));
+    setDate(entry.date);
+    notify("Сон записан");
+  }
+  function exportData() {
+    const url = URL.createObjectURL(
+      new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }),
+    );
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `kall-diary-${today()}.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setToast("Резервная копия дневника скачана");
+  }
+  async function importData(file?: File) {
+    if (!file || !canEdit()) return;
+    if (file.size > 50_000_000) {
+      setToast("Файл больше 50 МБ. Проверьте, что выбран экспорт дневника.");
+      return;
+    }
+    const owner = identityRef.current;
+    try {
+      const parsed: unknown = JSON.parse(await file.text());
+      if (identityRef.current !== owner) {
+        setToast(
+          "Аккаунт изменился. Выберите файл повторно в нужном дневнике.",
+        );
+        return;
+      }
+      if (!isAppData(parsed))
+        throw new Error("Файл не похож на резервную копию дневника Калл.");
+      setConfirm({
+        text: "Заменить текущий дневник данными из файла? Перед заменой автоматически скачается копия текущих записей.",
+        action: () => {
+          if (identityRef.current !== owner || !canEdit()) return;
+          exportData();
+          setData(parsed);
+          setToast("Дневник восстановлен из файла");
+        },
+      });
+    } catch (cause) {
+      setToast(
+        cause instanceof Error
+          ? cause.message
+          : "Не удалось прочитать резервную копию",
+      );
+    }
+  }
+  function removeProduct(p: Product) {
+    if (
+      data.recipes.some((r) => r.ingredients.some((i) => i.productId === p.id))
+    ) {
+      setToast("Продукт используется в рецепте. Сначала измените рецепт.");
+      return;
+    }
+    setConfirm({
+      text: `Удалить «${p.name}» из каталога? Записи в дневнике сохранятся.`,
+      action: () =>
+        setData((d) => ({
+          ...d,
+          products: d.products.filter((x) => x.id !== p.id),
+        })),
+    });
+  }
+  const datePicker = (
+    <div className="date-picker">
+      <button
+        className="icon-button"
+        onClick={() => setDate(dateOffset(date, -1))}
+        aria-label="Предыдущий день"
+      >
+        <ChevronLeft size={17} />
+      </button>
+      <label className="date-label">
+        <span>
+          {isToday ? "Сегодня, " : ""}
+          {dateLabel(date)}
+        </span>
+        <input
+          aria-label="Выбрать дату дневника"
+          type="date"
+          value={date}
+          onChange={(e) => {
+            if (e.target.value) setDate(e.target.value);
+          }}
+        />
+      </label>
+      <button
+        className="icon-button"
+        disabled={isToday}
+        onClick={() => setDate(dateOffset(date, 1))}
+        aria-label="Следующий день"
+      >
+        <ChevronRight size={17} />
+      </button>
+    </div>
+  );
+
+  return (
+    <div className="app-shell">
+      {menu && <div className="sidebar-shade" onClick={() => setMenu(false)} />}
+      <aside
+        className={`sidebar ${menu ? "open" : ""}`}
+        aria-label="Главная навигация"
+      >
+        <a
+          className="brand"
+          href="#"
+          onClick={(e) => {
+            e.preventDefault();
+            go("dashboard");
+          }}
+        >
+          <span className="brand-mark">
+            <Leaf size={26} />
+          </span>
+          калл<span className="brand-dot">.</span>
+        </a>
+        <p className="brand-tagline">маленькие шаги к себе</p>
+        <div className="nav-caption">МОЁ ПРОСТРАНСТВО</div>
+        <nav>
+          {pages.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => go(item.id)}
+              className={`nav-link ${page === item.id ? "selected" : ""}`}
+              aria-current={page === item.id ? "page" : undefined}
+            >
+              <item.icon size={20} />
+              <span>{item.name}</span>
+              {page === item.id && <i />}
+            </button>
+          ))}
+        </nav>
+        <div className="sidebar-note">
+          <span className="tiny-leaf">
+            <Leaf size={19} />
+          </span>
+          <h3>В своём ритме</h3>
+          <p>
+            Не идеальный рацион,
+            <br />а привычки, с которыми
+            <br />
+            вам хорошо.
+          </p>
+          <span className="note-leaf one" />
+          <span className="note-leaf two" />
+        </div>
+        <div className="sidebar-bottom">
+          <button
+            onClick={() => go("profile")}
+            className={`nav-link ${page === "profile" ? "selected" : ""}`}
+          >
+            <Settings2 size={20} />
+            Профиль и цели
+          </button>
+          <button
+            onClick={() => setModal({ type: "about" })}
+            className="nav-link muted"
+          >
+            <CircleHelp size={20} />О расчётах
+          </button>
+          <div className="sidebar-user">
+            <span className="avatar">
+              {data.profile.name?.[0]?.toUpperCase() || <Leaf size={19} />}
+            </span>
+            <div>
+              <strong>{data.profile.name || "Ваш дневник"}</strong>
+              <span>{user ? "Облачное сохранение" : "На этом устройстве"}</span>
+            </div>
+            <button
+              className="icon-button"
+              onClick={() =>
+                user ? go("profile") : setModal({ type: "auth" })
+              }
+              aria-label={user ? "Настройки аккаунта" : "Войти"}
+            >
+              <MoreHorizontal size={19} />
+            </button>
+          </div>
+        </div>
+      </aside>
+      <div className="workspace">
+        <header className="topbar">
+          <div className="topbar-left">
+            <button
+              className="icon-button mobile-menu"
+              onClick={() => setMenu(!menu)}
+              aria-label="Открыть меню"
+              aria-expanded={menu}
+            >
+              <Menu size={23} />
+            </button>
+            <span>Мой дневник</span>
+            <ChevronRight size={14} />
+            <strong>
+              {page === "profile"
+                ? "Профиль и цели"
+                : pages.find((p) => p.id === page)?.name}
+            </strong>
+          </div>
+          <div className="topbar-right">
+            <span className={`save-status ${store.error ? "has-error" : ""}`}>
+              <span />
+              {user ? store.syncStatus : "Локальный режим"}
+            </span>
+            <button
+              className="account-button"
+              onClick={() =>
+                user ? go("profile") : setModal({ type: "auth" })
+              }
+            >
+              {user ? <Cloud size={17} /> : <span className="login-dot" />}
+              <span>{user ? "Мой аккаунт" : "Войти по email"}</span>
+            </button>
+          </div>
+        </header>
+        <main>
+          {store.error && (
+            <div className="sync-banner" role="alert">
+              <span>{store.error}</span>
+              <button className="text-button" onClick={store.retrySync}>
+                Повторить
+              </button>
+              {store.conflict && (
+                <button
+                  className="text-button"
+                  onClick={() =>
+                    setConfirm({
+                      text: "Сначала скачайте текущий дневник. Загрузить облачную версию вместо локальной?",
+                      action: () => {
+                        exportData();
+                        void store
+                          .useCloudVersion()
+                          .catch((e: unknown) =>
+                            setToast(
+                              e instanceof Error
+                                ? e.message
+                                : "Ошибка загрузки",
+                            ),
+                          );
+                      },
+                    })
+                  }
+                >
+                  Загрузить из облака
+                </button>
+              )}
+            </div>
+          )}
+          <div className="page-heading">
+            <div>
+              <div className="eyebrow">
+                {page === "dashboard"
+                  ? "ПИТАНИЕ · ДВИЖЕНИЕ · БАЛАНС"
+                  : "ВАШ ПУТЬ К ХОРОШЕМУ САМОЧУВСТВИЮ"}
+              </div>
+              <h1>
+                {page === "dashboard"
+                  ? `${isToday ? "Хорошего дня" : "Ваш день"}${data.profile.name ? `, ${data.profile.name}` : ""}`
+                  : page === "profile"
+                    ? "Профиль и цели"
+                    : pages.find((p) => p.id === page)?.name}
+                {page === "dashboard" && (
+                  <span className="greeting-sun">☀</span>
+                )}
+              </h1>
+              <p>
+                {
+                  {
+                    dashboard:
+                      "Всё, что помогает заботиться о себе, — в одном месте.",
+                    products:
+                      "Знакомые продукты, понятный состав и место для нового.",
+                    recipes: "Ваши любимые сочетания. Мы посчитаем всё за вас.",
+                    activity:
+                      "Каждая прогулка — маленький вклад в самочувствие.",
+                    sleep: "Полноценный отдых — тоже часть заботы о себе.",
+                    profile: "Немного о вас — для более подходящих ориентиров.",
+                  }[page]
+                }
+              </p>
+            </div>
+            {["dashboard", "activity", "sleep"].includes(page) ? (
+              datePicker
+            ) : page === "products" ? (
+              <button
+                className="button primary"
+                onClick={() => setModal({ type: "product" })}
+              >
+                <Plus size={18} />
+                Свой продукт
+              </button>
+            ) : page === "recipes" ? (
+              <button
+                className="button primary"
+                onClick={() => setModal({ type: "recipe" })}
+              >
+                <Plus size={18} />
+                Создать рецепт
+              </button>
+            ) : null}
+          </div>
+
+          {page === "dashboard" && (
+            <>
+              {!hasProfile && (
+                <div className="welcome-banner">
+                  <div className="welcome-icon">
+                    <Sparkles size={23} />
+                  </div>
+                  <div>
+                    <strong>Давайте познакомимся</strong>
+                    <p>
+                      Заполните профиль, чтобы узнать свою цель по калориям и
+                      БЖУ.
+                    </p>
+                  </div>
+                  <button
+                    className="button secondary"
+                    onClick={() => go("profile")}
+                  >
+                    Настроить цель
+                    <ArrowRight size={16} />
+                  </button>
+                </div>
+              )}
+              <div className="dashboard-grid">
+                <div className="dashboard-main">
+                  <section className="card nutrition-card">
+                    <div className="card-heading">
+                      <h2>Баланс на день</h2>
+                      <span className="pill">
+                        <span />
+                        {target ? "В вашем ритме" : "Начнём с малого"}
+                      </span>
+                    </div>
+                    <div className="nutrition-content">
+                      <div className="ring-column">
+                        <Ring value={nutrients.kcal} total={target} />
+                        <div className="calorie-remaining">
+                          {target ? (
+                            <>
+                              <strong>
+                                {number(Math.abs(target - nutrients.kcal))}
+                              </strong>{" "}
+                              ккал{" "}
+                              {nutrients.kcal > target
+                                ? "сверх ориентира"
+                                : "осталось"}
+                            </>
+                          ) : (
+                            <button
+                              className="text-button"
+                              onClick={() => go("profile")}
+                            >
+                              Рассчитать мой ориентир →
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      <div className="macro-column">
+                        <div className="daily-limit">
+                          <span>Дневной ориентир</span>
+                          <strong>
+                            {target ? number(target) : "—"} <small>ккал</small>
+                          </strong>
+                        </div>
+                        <Macro
+                          label="Белки"
+                          value={nutrients.protein}
+                          goal={hasProfile ? profile.protein : 0}
+                          color="var(--protein)"
+                        />
+                        <Macro
+                          label="Жиры"
+                          value={nutrients.fat}
+                          goal={hasProfile ? profile.fat : 0}
+                          color="var(--fat)"
+                        />
+                        <Macro
+                          label="Углеводы"
+                          value={nutrients.carbs}
+                          goal={hasProfile ? profile.carbs : 0}
+                          color="var(--carbs)"
+                        />
+                        <p className="mini-note">
+                          Баланс важнее идеальных цифр.
+                        </p>
+                      </div>
+                    </div>
+                  </section>
+                  <section className="card diary-card">
+                    <div className="card-heading">
+                      <div>
+                        <h2>Дневник питания</h2>
+                        <p>{dateLabel(date, true)}</p>
+                      </div>
+                      <button
+                        className="button primary small"
+                        onClick={() =>
+                          setModal({ type: "food", meal: "breakfast" })
+                        }
+                      >
+                        <Plus size={17} />
+                        Добавить еду
+                      </button>
+                    </div>
+                    <div className="meal-list">
+                      {meals.map((meal) => {
+                        const entries = data.food.filter(
+                          (e) => e.date === date && e.meal === meal.id,
+                        );
+                        const total = sumNutrients(
+                          entries.map((e) => e.nutrients),
+                        );
+                        return (
+                          <div className="meal-group" key={meal.id}>
+                            <div className="meal-row">
+                              <span className={`meal-icon ${meal.id}`}>
+                                <meal.icon size={21} />
+                              </span>
+                              <div className="meal-text">
+                                <h3>{meal.name}</h3>
+                                <p>
+                                  {entries.length
+                                    ? `${number(total.protein)} Б · ${number(total.fat)} Ж · ${number(total.carbs)} У`
+                                    : meal.time}
+                                </p>
+                              </div>
+                              <strong className="meal-calories">
+                                {number(total.kcal)} <span>ккал</span>
+                              </strong>
+                              <button
+                                className="add-meal"
+                                onClick={() =>
+                                  setModal({ type: "food", meal: meal.id })
+                                }
+                                aria-label={`Добавить еду: ${meal.name}`}
+                              >
+                                <Plus size={18} />
+                              </button>
+                            </div>
+                            {entries.map((entry) => (
+                              <div className="food-entry" key={entry.id}>
+                                <FoodImage
+                                  image={
+                                    entry.image ??
+                                    data.products.find(
+                                      (p) => p.id === entry.productId,
+                                    )?.image
+                                  }
+                                  emoji={entry.emoji}
+                                />
+                                <div>
+                                  <strong>{entry.name}</strong>
+                                  <span>
+                                    {number(entry.grams)} г · Б{" "}
+                                    {number(entry.nutrients.protein, 1)} · Ж{" "}
+                                    {number(entry.nutrients.fat, 1)} · У{" "}
+                                    {number(entry.nutrients.carbs, 1)}
+                                  </span>
+                                </div>
+                                <b>{number(entry.nutrients.kcal)}</b>
+                                <button
+                                  className="icon-button delete"
+                                  aria-label={`Удалить запись ${entry.name}`}
+                                  onClick={() =>
+                                    setConfirm({
+                                      text: `Удалить «${entry.name}» из дневника за ${dateLabel(date)}?`,
+                                      action: () =>
+                                        setData((d) => ({
+                                          ...d,
+                                          food: d.food.filter(
+                                            (x) => x.id !== entry.id,
+                                          ),
+                                        })),
+                                    })
+                                  }
+                                >
+                                  <X size={15} />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="diary-footer">
+                      <Leaf size={15} />
+                      <span>
+                        {data.food.some((e) => e.date === date)
+                          ? "Порции записаны — можно вернуться к своему дню."
+                          : "Первая запись — начало вашей новой привычки."}
+                      </span>
+                    </div>
+                  </section>
+                  <section className="card chart-card">
+                    <div className="card-heading">
+                      <div>
+                        <h2>Ваш баланс БЖУ</h2>
+                        <p>За последние 7 дней · доля энергии</p>
+                      </div>
+                      <div className="chart-legend">
+                        <span>
+                          <i className="protein-bg" />Б
+                        </span>
+                        <span>
+                          <i className="fat-bg" />Ж
+                        </span>
+                        <span>
+                          <i className="carbs-bg" />У
+                        </span>
+                      </div>
+                    </div>
+                    <div className="weekly-chart">
+                      {Array.from({ length: 7 }, (_, i) =>
+                        dateOffset(date, i - 6),
+                      ).map((day) => {
+                        const value = sumNutrients(
+                          data.food
+                            .filter((e) => e.date === day)
+                            .map((e) => e.nutrients),
+                        );
+                        const energy =
+                          value.protein * 4 + value.fat * 9 + value.carbs * 4;
+                        return (
+                          <button
+                            key={day}
+                            className={`chart-day ${day === date ? "chosen" : ""}`}
+                            onClick={() => setDate(day)}
+                            aria-label={`${dateLabel(day)}: белки ${number(value.protein)} г, жиры ${number(value.fat)} г, углеводы ${number(value.carbs)} г`}
+                            title={`Б ${number(value.protein)} г · Ж ${number(value.fat)} г · У ${number(value.carbs)} г`}
+                          >
+                            <span className="chart-value">
+                              {energy ? number(value.kcal) : "—"}
+                            </span>
+                            <span
+                              className={`chart-bar ${!energy ? "empty" : ""}`}
+                            >
+                              <i
+                                className="protein-bg"
+                                style={{
+                                  height: `${percent(value.protein * 4, energy)}%`,
+                                }}
+                              />
+                              <i
+                                className="fat-bg"
+                                style={{
+                                  height: `${percent(value.fat * 9, energy)}%`,
+                                }}
+                              />
+                              <i
+                                className="carbs-bg"
+                                style={{
+                                  height: `${percent(value.carbs * 4, energy)}%`,
+                                }}
+                              />
+                            </span>
+                            <span>
+                              {new Date(`${day}T12:00:00`).toLocaleDateString(
+                                "ru-RU",
+                                { weekday: "short" },
+                              )}
+                            </span>
+                            <small>
+                              {new Date(`${day}T12:00:00`).getDate()}
+                            </small>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="chart-caption">
+                      {data.food.some(
+                        (e) => e.date >= dateOffset(date, -6) && e.date <= date,
+                      )
+                        ? "Над столбцами — ккал из дневника. Нажмите на день, чтобы открыть его."
+                        : "Добавьте еду в дневник — здесь появится ваша история питания."}
+                    </p>
+                  </section>
+                </div>
+                <div className="dashboard-side">
+                  <section className="rhythm-card">
+                    <div className="rhythm-copy">
+                      <span className="eyebrow">БЕЗ СПЕШКИ. ДЛЯ СЕБЯ.</span>
+                      <h2>
+                        Хорошие привычки
+                        <br />
+                        растут постепенно.
+                      </h2>
+                      <p>
+                        Один сбалансированный приём пищи.
+                        <br />
+                        Одна прогулка. Один хороший день.
+                      </p>
+                    </div>
+                    <div className="plant-art" aria-hidden="true">
+                      <span className="plant-stem" />
+                      <i className="plant-leaf l1" />
+                      <i className="plant-leaf l2" />
+                      <i className="plant-leaf l3" />
+                      <i className="plant-leaf l4" />
+                      <span className="plant-pot" />
+                    </div>
+                  </section>
+                  <section className="card compact-card">
+                    <div className="card-heading">
+                      <h2>
+                        <span className="section-icon green">
+                          <Footprints size={19} />
+                        </span>
+                        Движение
+                      </h2>
+                      <button
+                        className="icon-button"
+                        onClick={() => go("activity")}
+                        aria-label="Открыть активность"
+                      >
+                        <ArrowRight size={18} />
+                      </button>
+                    </div>
+                    <div className="metric">
+                      <strong>{number(totalSteps)}</strong>
+                      <span>
+                        / {hasProfile ? number(data.profile.stepsGoal) : "—"}{" "}
+                        шагов
+                      </span>
+                    </div>
+                    <div className="track">
+                      <span
+                        style={{
+                          width: `${percent(totalSteps, hasProfile ? data.profile.stepsGoal : 0)}%`,
+                        }}
+                      />
+                    </div>
+                    <div className="metric-details">
+                      <span>{number(totalDistance, 2)} км</span>
+                      <span>
+                        <Flame size={13} />
+                        {number(activeCalories)} активных ккал
+                      </span>
+                    </div>
+                    <div className="tip-box">
+                      <Sun size={18} />
+                      <p>
+                        {hasProfile && totalSteps >= data.profile.stepsGoal
+                          ? "Цель по шагам достигнута. Дайте себе время на отдых."
+                          : "Небольшая прогулка после обеда — удобный способ добавить движения."}
+                      </p>
+                    </div>
+                    <button
+                      className="button secondary full-width"
+                      onClick={() => openTracked("walk")}
+                    >
+                      <Plus size={16} />
+                      Записать прогулку
+                    </button>
+                  </section>
+                  <section className="card compact-card sleep-card">
+                    <div className="card-heading">
+                      <h2>
+                        <span className="section-icon purple">
+                          <Moon size={19} />
+                        </span>
+                        Сон и отдых
+                      </h2>
+                      <button
+                        className="icon-button"
+                        onClick={() => go("sleep")}
+                        aria-label="Открыть дневник сна"
+                      >
+                        <ArrowRight size={18} />
+                      </button>
+                    </div>
+                    <div className="sleep-summary">
+                      <strong>
+                        {totalSleep
+                          ? `${Math.floor(totalSleep)} ч ${Math.round((totalSleep % 1) * 60)} мин`
+                          : "Тихая перезагрузка"}
+                      </strong>
+                      <p>
+                        {totalSleep
+                          ? `≈ ${number(sleep.reduce((sum, s) => sum + sleepCalories(s), 0))} ккал за время сна`
+                          : "Запишите время сна и пробуждения"}
+                      </p>
+                    </div>
+                    <button
+                      className="button secondary full-width"
+                      onClick={() => openTracked("sleep")}
+                    >
+                      <Plus size={16} />
+                      Записать сон
+                    </button>
+                  </section>
+                  <section className="card water-card">
+                    <div className="card-heading">
+                      <h2>
+                        <span className="section-icon blue">
+                          <Droplets size={18} />
+                        </span>
+                        Не забывайте о воде
+                      </h2>
+                      <span className="water-total">
+                        {number(water / 1000, 2)} л
+                      </span>
+                    </div>
+                    <p>Пейте по жажде, держите воду под рукой.</p>
+                    <div className="water-actions">
+                      <div className="water-drops" aria-hidden="true">
+                        {Array.from({ length: 6 }, (_, i) => (
+                          <Droplets
+                            key={i}
+                            size={23}
+                            className={water >= (i + 1) * 250 ? "filled" : ""}
+                          />
+                        ))}
+                      </div>
+                      <button
+                        className="water-add"
+                        disabled={!store.editable || water >= 10000}
+                        onClick={() =>
+                          setData((d) => ({
+                            ...d,
+                            water: {
+                              ...d.water,
+                              [date]: Math.min(
+                                10000,
+                                (d.water[date] || 0) + 250,
+                              ),
+                            },
+                          }))
+                        }
+                        aria-label="Добавить 250 мл воды"
+                      >
+                        <Plus size={16} />
+                        250 мл
+                      </button>
+                    </div>
+                    {water > 0 && (
+                      <button
+                        className="text-button tiny"
+                        onClick={() =>
+                          setData((d) => ({
+                            ...d,
+                            water: {
+                              ...d.water,
+                              [date]: Math.max(0, (d.water[date] || 0) - 250),
+                            },
+                          }))
+                        }
+                      >
+                        Убрать 250 мл
+                      </button>
+                    )}
+                  </section>
+                </div>
+              </div>
+            </>
+          )}
+
+          {page === "products" && (
+            <>
+              <div className="catalog-toolbar">
+                <label className="search-field">
+                  <Search size={19} />
+                  <input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Найти продукт…"
+                    aria-label="Поиск продуктов"
+                  />
+                </label>
+                <span className="helper">Пищевая ценность на 100 г</span>
+              </div>
+              <div className="filters">
+                {[
+                  "Все",
+                  "Мои продукты",
+                  "Крупы",
+                  "Белковые",
+                  "Овощи и фрукты",
+                  "Молочные",
+                  "Другое",
+                ].map((c) => (
+                  <button
+                    key={c}
+                    className={category === c ? "active" : ""}
+                    onClick={() => setCategory(c)}
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
+              <div className="product-grid">
+                {data.products
+                  .filter(
+                    (p) =>
+                      p.name.toLowerCase().includes(search.toLowerCase()) &&
+                      (category === "Все" ||
+                        (category === "Мои продукты" && p.custom) ||
+                        p.category === category),
+                  )
+                  .map((p) => (
+                    <article className="card product-card" key={p.id}>
+                      <div className="product-top">
+                        <FoodImage image={p.image} emoji={p.emoji} />
+                        <span className="product-category">
+                          {p.custom ? "Мой продукт" : p.category}
+                        </span>
+                        {p.custom && (
+                          <div className="product-tools">
+                            <button
+                              className="icon-button"
+                              onClick={() =>
+                                setModal({ type: "product", product: p })
+                              }
+                              aria-label={`Редактировать ${p.name}`}
+                            >
+                              <Pencil size={15} />
+                            </button>
+                            <button
+                              className="icon-button delete"
+                              onClick={() => removeProduct(p)}
+                              aria-label={`Удалить ${p.name}`}
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      <h3>{p.name}</h3>
+                      <div className="product-energy">
+                        <strong>{number(p.kcal)}</strong> ккал{" "}
+                        <span>/ 100 г</span>
+                      </div>
+                      <div className="product-macros">
+                        <span>
+                          <i className="protein-bg" />Б{" "}
+                          <b>{number(p.protein, 1)}</b>
+                        </span>
+                        <span>
+                          <i className="fat-bg" />Ж <b>{number(p.fat, 1)}</b>
+                        </span>
+                        <span>
+                          <i className="carbs-bg" />У{" "}
+                          <b>{number(p.carbs, 1)}</b>
+                        </span>
+                      </div>
+                      <button
+                        className="insight-link"
+                        onClick={() => setInsight(p)}
+                      >
+                        <Leaf size={14} />
+                        Что учитывать
+                        <ArrowRight size={14} />
+                      </button>
+                    </article>
+                  ))}
+              </div>
+              {!data.products.some(
+                (p) =>
+                  p.name.toLowerCase().includes(search.toLowerCase()) &&
+                  (category === "Все" ||
+                    (category === "Мои продукты" && p.custom) ||
+                    p.category === category),
+              ) && (
+                <div className="empty-state">
+                  <Utensils size={35} />
+                  <h3>Пока ничего не найдено</h3>
+                  <p>Измените поиск или добавьте свой продукт.</p>
+                  <button
+                    className="button primary"
+                    onClick={() => setModal({ type: "product" })}
+                  >
+                    <Plus size={17} />
+                    Добавить продукт
+                  </button>
+                </div>
+              )}
+              <p className="page-footnote">
+                Значения в базовом каталоге усреднены. Для точного учёта
+                добавляйте данные с упаковки своего продукта.
+              </p>
+            </>
+          )}
+
+          {page === "recipes" && (
+            <>
+              {data.recipes.length ? (
+                <div className="product-grid">
+                  {data.recipes.map((r) => {
+                    const total = recipeNutrients(r, data.products);
+                    const portion = scaleNutrients(total, 1 / r.servings);
+                    return (
+                      <article key={r.id} className="card recipe-card">
+                        <div className="recipe-art">
+                          <span>{r.emoji}</span>
+                          <span className="pill">{r.servings} порц.</span>
+                        </div>
+                        <div className="recipe-body">
+                          <h3>{r.name}</h3>
+                          <p>
+                            {r.ingredients.length} ингредиентов ·{" "}
+                            {number(r.cookedWeight)} г готового блюда
+                          </p>
+                          <div className="product-energy">
+                            <strong>{number(portion.kcal)}</strong> ккал{" "}
+                            <span>/ порция</span>
+                          </div>
+                          <div className="product-macros">
+                            <span>
+                              Б <b>{number(portion.protein, 1)}</b>
+                            </span>
+                            <span>
+                              Ж <b>{number(portion.fat, 1)}</b>
+                            </span>
+                            <span>
+                              У <b>{number(portion.carbs, 1)}</b>
+                            </span>
+                          </div>
+                          <div className="recipe-actions">
+                            <button
+                              className="text-button"
+                              onClick={() =>
+                                setModal({ type: "recipe", recipe: r })
+                              }
+                            >
+                              <Pencil size={14} />
+                              Изменить рецепт
+                            </button>
+                            <button
+                              className="icon-button delete"
+                              aria-label={`Удалить рецепт ${r.name}`}
+                              onClick={() =>
+                                setConfirm({
+                                  text: `Удалить рецепт «${r.name}»? Записи в дневнике сохранятся.`,
+                                  action: () =>
+                                    setData((d) => ({
+                                      ...d,
+                                      recipes: d.recipes.filter(
+                                        (x) => x.id !== r.id,
+                                      ),
+                                    })),
+                                })
+                              }
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="card empty-state spacious">
+                  <span className="empty-illustration">🥗</span>
+                  <span className="eyebrow">ВКУСНО. ПРОСТО. ПО-ВАШЕМУ.</span>
+                  <h2>У каждого есть любимый рецепт</h2>
+                  <p>
+                    Соберите блюдо из продуктов, укажите вес после
+                    приготовления.
+                    <br />
+                    Калории и БЖУ на порцию рассчитаются автоматически.
+                  </p>
+                  <button
+                    className="button primary"
+                    onClick={() => setModal({ type: "recipe" })}
+                  >
+                    <Plus size={18} />
+                    Создать первый рецепт
+                  </button>
+                </div>
+              )}
+              <div className="notice recipe-notice">
+                <BookOpen size={20} />
+                <p>
+                  Приготовление меняет вес за счёт воды. Укажите итоговый вес
+                  блюда, чтобы правильно считать калории на 100 г. Масло и соусы
+                  добавляйте отдельными ингредиентами.
+                </p>
+              </div>
+            </>
+          )}
+
+          {page === "activity" && (
+            <>
+              <div className="stats-grid">
+                <div className="card stat-card">
+                  <span className="section-icon green">
+                    <Footprints size={22} />
+                  </span>
+                  <p>Пройдено шагов</p>
+                  <strong>
+                    {number(totalSteps)}{" "}
+                    <small>
+                      / {hasProfile ? number(data.profile.stepsGoal) : "—"}
+                    </small>
+                  </strong>
+                  <div className="track">
+                    <span
+                      style={{
+                        width: `${percent(totalSteps, data.profile.stepsGoal)}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+                <div className="card stat-card">
+                  <span className="section-icon peach">
+                    <Flame size={22} />
+                  </span>
+                  <p>Активный расход</p>
+                  <strong>
+                    {number(activeCalories)} <small>ккал</small>
+                  </strong>
+                  <span className="helper">Сверх расхода в покое</span>
+                </div>
+                <div className="card stat-card">
+                  <span className="section-icon blue">
+                    <Sun size={22} />
+                  </span>
+                  <p>Время на прогулке</p>
+                  <strong>
+                    {number(totalMinutes)} <small>мин</small>
+                  </strong>
+                  <span className="helper">
+                    {number(totalDistance, 2)} км за день
+                  </span>
+                </div>
+              </div>
+              <div className="two-column">
+                <section className="card">
+                  <div className="card-heading">
+                    <h2>Мои прогулки</h2>
+                    <button
+                      className="button primary small"
+                      onClick={() => openTracked("walk")}
+                    >
+                      <Plus size={16} />
+                      Записать
+                    </button>
+                  </div>
+                  {walks.length ? (
+                    walks.map((w) => (
+                      <div className="log-row" key={w.id}>
+                        <span className="section-icon green">
+                          <Footprints size={21} />
+                        </span>
+                        <div>
+                          <h3>Прогулка в {w.time}</h3>
+                          <p>
+                            {w.minutes} мин · {number(w.steps)} шагов ·{" "}
+                            {number(w.distance, 2)} км
+                          </p>
+                          <small>
+                            {
+                              {
+                                easy: "Спокойный темп",
+                                moderate: "Умеренный темп",
+                                brisk: "Быстрый темп",
+                              }[w.pace]
+                            }{" "}
+                            · всего ≈ {walkStats(w).gross} ккал
+                          </small>
+                        </div>
+                        <strong>
+                          {walkStats(w).active}
+                          <small>активных ккал</small>
+                        </strong>
+                        <button
+                          className="icon-button delete"
+                          aria-label="Удалить прогулку"
+                          onClick={() =>
+                            setConfirm({
+                              text: "Удалить эту прогулку?",
+                              action: () =>
+                                setData((d) => ({
+                                  ...d,
+                                  walks: d.walks.filter((x) => x.id !== w.id),
+                                })),
+                            })
+                          }
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="empty-state">
+                      <Footprints size={32} />
+                      <h3>У каждого шага есть значение</h3>
+                      <p>Запишите первую прогулку за этот день.</p>
+                    </div>
+                  )}
+                </section>
+                <section className="card schedule-card">
+                  <h2>Движение в течение дня</h2>
+                  <p className="helper">
+                    Пример удобного расписания, без привязки к «сжиганию жира»
+                    по часам.
+                  </p>
+                  {[
+                    {
+                      time: "08:00",
+                      title: "Мягкое начало",
+                      text: "10 минут спокойной прогулки",
+                      Icon: Sunrise,
+                    },
+                    {
+                      time: "13:00",
+                      title: "Перерыв для себя",
+                      text: "15 минут движения после обеда",
+                      Icon: Sun,
+                    },
+                    {
+                      time: "18:30",
+                      title: "Выдохнуть после дня",
+                      text: "20 минут прогулки в удобном темпе",
+                      Icon: Moon,
+                    },
+                  ].map((s) => (
+                    <div className="schedule-item" key={s.time}>
+                      <span>{s.time}</span>
+                      <s.Icon size={20} />
+                      <div>
+                        <strong>{s.title}</strong>
+                        <p>{s.text}</p>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="tip-box">
+                    <Leaf size={20} />
+                    <p>
+                      {hasProfile
+                        ? `Ваш ориентир: ${number(data.profile.stepsGoal)} шагов, примерно ${number((data.profile.stepsGoal * data.profile.stride) / 1000, 1)} км. `
+                        : ""}
+                      Начинайте с посильной нагрузки и наращивайте её
+                      постепенно.
+                    </p>
+                  </div>
+                </section>
+              </div>
+              <p className="page-footnote">
+                Расход рассчитан по MET, длительности и весу на момент записи.
+                Дневной лимит уже учитывает обычную активность. Шаги и километры
+                — ориентир привычки, а не гарантия похудения.
+              </p>
+            </>
+          )}
+
+          {page === "sleep" && (
+            <>
+              <div className="sleep-hero">
+                <div>
+                  <span className="eyebrow">
+                    ВОССТАНОВЛЕНИЕ НАЧИНАЕТСЯ С ОТДЫХА
+                  </span>
+                  <h2>Позвольте себе выдохнуть</h2>
+                  <p>
+                    Записывайте время, когда уснули и проснулись,
+                    <br />
+                    чтобы лучше понимать свой ритм.
+                  </p>
+                  <button
+                    className="button primary"
+                    onClick={() => openTracked("sleep")}
+                  >
+                    <Plus size={17} />
+                    Записать сон
+                  </button>
+                </div>
+                <Moon size={120} strokeWidth={0.7} aria-hidden="true" />
+              </div>
+              <div className="stats-grid">
+                <div className="card stat-card">
+                  <p>Продолжительность сна</p>
+                  <strong>
+                    {number(totalSleep, 1)} <small>часов</small>
+                  </strong>
+                  <span className="helper">По дате пробуждения</span>
+                </div>
+                <div className="card stat-card">
+                  <p>Расход за время сна</p>
+                  <strong>
+                    ≈{" "}
+                    {number(
+                      sleep.reduce((sum, s) => sum + sleepCalories(s), 0),
+                    )}{" "}
+                    <small>ккал</small>
+                  </strong>
+                  <span className="helper">Уже входит в суточный обмен</span>
+                </div>
+                <div className="card stat-card">
+                  <p>Ваш ритм</p>
+                  <strong>
+                    {sleep.length} <small>записей</small>
+                  </strong>
+                  <span className="helper">Сон ночью и дневной отдых</span>
+                </div>
+              </div>
+              <section className="card">
+                <div className="card-heading">
+                  <h2>История сна</h2>
+                  <span className="pill">{dateLabel(date)}</span>
+                </div>
+                {sleep.length ? (
+                  sleep.map((s) => (
+                    <div className="log-row" key={s.id}>
+                      <span className="section-icon purple">
+                        <Moon size={23} />
+                      </span>
+                      <div>
+                        <h3>
+                          {new Date(s.bedtime).toLocaleTimeString("ru-RU", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}{" "}
+                          —{" "}
+                          {new Date(s.wakeTime).toLocaleTimeString("ru-RU", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </h3>
+                        <p>
+                          {dateLabel(s.bedtime.slice(0, 10))} →{" "}
+                          {dateLabel(s.wakeTime.slice(0, 10))}
+                        </p>
+                      </div>
+                      <strong>
+                        {number(sleepHours(s.bedtime, s.wakeTime), 1)} ч
+                        <small>≈ {sleepCalories(s)} ккал</small>
+                      </strong>
+                      <button
+                        className="icon-button delete"
+                        aria-label="Удалить запись сна"
+                        onClick={() =>
+                          setConfirm({
+                            text: "Удалить эту запись сна?",
+                            action: () =>
+                              setData((d) => ({
+                                ...d,
+                                sleep: d.sleep.filter((x) => x.id !== s.id),
+                              })),
+                          })
+                        }
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  ))
+                ) : (
+                  <div className="empty-state">
+                    <Moon size={34} />
+                    <h3>Здесь будет ваша история отдыха</h3>
+                    <p>Добавьте время сна и пробуждения за выбранную дату.</p>
+                  </div>
+                )}
+              </section>
+              <p className="page-footnote">
+                Расход во сне — грубая оценка: 1 MET × вес × часы. Он не
+                прибавляется к лимиту питания. Потребность во сне индивидуальна;
+                приложение не оценивает его качество.
+              </p>
+            </>
+          )}
+
+          {page === "profile" && (
+            <div className="profile-layout">
+              <section className="card profile-form">
+                <div className="card-heading">
+                  <h2>Давайте настроим ваш дневник</h2>
+                  <span className="pill">Для взрослых 20–78 лет</span>
+                </div>
+                <ProfileForm
+                  key={(user?.id ?? "guest") + JSON.stringify(data.profile)}
+                  profile={data.profile}
+                  onSave={(p) => {
+                    if (!canEdit()) return;
+                    setData((d) => ({ ...d, profile: p }));
+                    setToast("Профиль и цели сохранены");
+                  }}
+                />
+              </section>
+              <div className="profile-aside">
+                <section className="card bmi-card">
+                  <span className="eyebrow">ИНДЕКС МАССЫ ТЕЛА</span>
+                  <div className="bmi-value">
+                    {hasProfile ? number(profile.bmi, 2) : "—"}
+                    <span>ИМТ</span>
+                  </div>
+                  <div className="bmi-scale">
+                    <span
+                      style={{
+                        left: `${hasProfile ? Math.min(96, Math.max(4, ((profile.bmi - 15) / 25) * 100)) : 40}%`,
+                      }}
+                    />
+                  </div>
+                  <div className="bmi-labels">
+                    <span>18,5</span>
+                    <span>25</span>
+                    <span>30</span>
+                  </div>
+                  <h3>{hasProfile ? profile.bmiLabel : "Заполните профиль"}</h3>
+                  <p>
+                    ИМТ — ориентир для взрослых, а не диагноз. Он не различает
+                    мышечную и жировую массу.
+                  </p>
+                  {hasProfile && (
+                    <div className="estimate-list">
+                      <div>
+                        <span>Расход в покое</span>
+                        <strong>{profile.bmr} ккал</strong>
+                      </div>
+                      <div>
+                        <span>С учётом активности</span>
+                        <strong>{profile.tdee} ккал</strong>
+                      </div>
+                      <div>
+                        <span>Дневной ориентир</span>
+                        <strong>{profile.target} ккал</strong>
+                      </div>
+                      <p>
+                        {profile.deficit
+                          ? "Умеренное снижение: 10% от расчётного расхода, не ниже оценки обмена в покое."
+                          : "Поддержание веса без автоматического дефицита."}{" "}
+                        Это настройка модели, а не медицинское назначение.
+                      </p>
+                    </div>
+                  )}
+                </section>
+                <section className="card account-card">
+                  <h2>
+                    <Cloud size={19} />
+                    Ваш дневник
+                  </h2>
+                  <p>
+                    {user
+                      ? user.email
+                      : "Пока записи хранятся только в этом браузере. Войдите, чтобы вести отдельный дневник в облаке."}
+                  </p>
+                  <span className="pill">
+                    {user ? store.syncStatus : "Локальное сохранение"}
+                  </span>
+                  {user ? (
+                    <button
+                      className="button secondary full-width"
+                      onClick={() =>
+                        setConfirm({
+                          text: "Выйти из облачного дневника? Убедитесь, что записи синхронизированы.",
+                          action: () => {
+                            void store
+                              .signOut()
+                              .catch((e: unknown) =>
+                                setToast(
+                                  e instanceof Error
+                                    ? e.message
+                                    : "Не удалось выйти",
+                                ),
+                              );
+                          },
+                        })
+                      }
+                    >
+                      <LogOut size={16} />
+                      Выйти из аккаунта
+                    </button>
+                  ) : (
+                    <button
+                      className="button primary full-width"
+                      disabled={!store.authReady}
+                      onClick={() => setModal({ type: "auth" })}
+                    >
+                      Войти по email
+                      <ArrowRight size={16} />
+                    </button>
+                  )}
+                  <button
+                    className="text-button export-button"
+                    onClick={exportData}
+                  >
+                    <ArrowDownToLine size={16} />
+                    Скачать дневник (JSON)
+                  </button>
+                  <label className="import-button">
+                    Восстановить из JSON
+                    <input
+                      aria-label="Восстановить дневник из JSON"
+                      type="file"
+                      accept="application/json,.json"
+                      disabled={!store.editable}
+                      onChange={(e) => {
+                        void importData(e.target.files?.[0]);
+                        e.target.value = "";
+                      }}
+                    />
+                  </label>
+                </section>
+              </div>
+            </div>
+          )}
+          <footer className="main-footer">
+            <span>
+              <Leaf size={14} />
+              калл — забота о себе каждый день
+            </span>
+            <button
+              className="text-button"
+              onClick={() => setModal({ type: "about" })}
+            >
+              Как мы считаем
+              <ArrowRight size={13} />
+            </button>
+          </footer>
+        </main>
+      </div>
+      {toast && (
+        <div className="toast" role="status">
+          <Check size={18} />
+          <span>{toast}</span>
+          <button
+            className="icon-button"
+            aria-label="Скрыть уведомление"
+            onClick={() => setToast("")}
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
+      {modal && (
+        <Modal
+          title={
+            modal.type === "food"
+              ? "Добавить еду"
+              : modal.type === "product"
+                ? modal.product
+                  ? "Изменить продукт"
+                  : "Новый продукт"
+                : modal.type === "recipe"
+                  ? modal.recipe
+                    ? "Изменить рецепт"
+                    : "Ваш новый рецепт"
+                  : modal.type === "walk"
+                    ? "Записать прогулку"
+                    : modal.type === "sleep"
+                      ? "Записать сон"
+                      : modal.type === "auth"
+                        ? "Ваш дневник, где бы вы ни были"
+                        : "Понятные расчёты"
+          }
+          subtitle={
+            modal.type === "food"
+              ? `${dateLabel(date)} · ${meals.find((m) => m.id === modal.meal)?.name}`
+              : undefined
+          }
+          wide={modal.type === "recipe"}
+          onClose={() => setModal(null)}
+        >
+          {modal.type === "food" && (
+            <FoodForm
+              products={data.products}
+              recipes={data.recipes}
+              date={date}
+              meal={modal.meal}
+              onSave={saveFood}
+              onCancel={() => setModal(null)}
+            />
+          )}
+          {modal.type === "product" && (
+            <ProductForm
+              initial={modal.product}
+              onSave={saveProduct}
+              onCancel={() => setModal(null)}
+            />
+          )}
+          {modal.type === "recipe" && (
+            <RecipeForm
+              products={data.products}
+              initial={modal.recipe}
+              onSave={saveRecipe}
+              onCancel={() => setModal(null)}
+            />
+          )}
+          {modal.type === "walk" && (
+            <WalkForm
+              profile={data.profile}
+              date={date}
+              onSave={saveWalk}
+              onCancel={() => setModal(null)}
+            />
+          )}
+          {modal.type === "sleep" && (
+            <SleepForm
+              profile={data.profile}
+              date={date}
+              onSave={saveSleep}
+              onCancel={() => setModal(null)}
+            />
+          )}
+          {modal.type === "auth" && (
+            <AuthPanel
+              configured={store.configured}
+              onSignIn={store.signIn}
+              onSignUp={store.signUp}
+              onDone={() => notify("Вы вошли в дневник")}
+            />
+          )}
+          {modal.type === "about" && (
+            <div className="about-content">
+              <p>
+                Цифры помогают видеть привычки, но не описывают самочувствие
+                целиком. Это ориентировочные расчёты для взрослых.
+              </p>
+              <h3>Калории и ИМТ</h3>
+              <p>
+                ИМТ = вес / рост². Расход в покое — формула Mifflin–St Jeor;
+                затем применяем выбранный коэффициент активности. Для снижения
+                веса используем дефицит 10%, без снижения ниже оценки обмена в
+                покое. При ИМТ ниже 18,5 дефицит отключён.
+              </p>
+              <h3>Белки, жиры и углеводы</h3>
+              <p>
+                Базовые ориентиры: 25%, 30% и 45% энергии. Белки и углеводы — 4
+                ккал/г, жиры — 9 ккал/г. Ккал с упаковки могут отличаться из-за
+                клетчатки и округления.
+              </p>
+              <h3>Ходьба и сон</h3>
+              <p>
+                Используем MET из Compendium 2024. Активный расход ходьбы = (MET
+                − 1) × вес × часы. Сон = 1 MET × вес × часы. Эти значения не
+                увеличивают калорийную цель: обычная активность и сон уже учтены
+                в суточном обмене.
+              </p>
+              <h3>Питание и самочувствие</h3>
+              <p>
+                Нет продукта, который сам по себе гарантирует или блокирует
+                похудение. Мы показываем калорийность, белок, клетчатку и размер
+                порции. По БЖУ нельзя оценить аллергены, витамины, соль и все
+                индивидуальные реакции.
+              </p>
+              <p className="helper">
+                Автоматические цели не предназначены для беременности, лактации
+                и состояний, требующих лечебного питания.
+              </p>
+              <div className="source-links">
+                <a
+                  href="https://www.cdc.gov/bmi/adult-calculator/bmi-categories.html"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  CDC · ИМТ ↗
+                </a>
+                <a
+                  href="https://pubmed.ncbi.nlm.nih.gov/2305711/"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Mifflin–St Jeor ↗
+                </a>
+                <a
+                  href="https://pacompendium.com/walking/"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Расход при ходьбе ↗
+                </a>
+                <a
+                  href="https://pacompendium.com/inactivity/"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Расход во сне ↗
+                </a>
+                <a
+                  href="https://www.who.int/news-room/fact-sheets/detail/healthy-diet"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  ВОЗ · Питание ↗
+                </a>
+              </div>
+            </div>
+          )}
+        </Modal>
+      )}
+      {insight && (
+        <Modal
+          title={insight.name}
+          subtitle="Пищевая ценность и место в рационе"
+          onClose={() => setInsight(null)}
+        >
+          <div className="insight-header">
+            <FoodImage image={insight.image} emoji={insight.emoji} />
+            <div>
+              <strong>{insight.kcal} ккал / 100 г</strong>
+              <p>
+                Б {insight.protein} · Ж {insight.fat} · У {insight.carbs}
+              </p>
+            </div>
+          </div>
+          {insight.note && <p className="notice">{insight.note}</p>}
+          <ul className="insight-list">
+            {productInsights(insight).map((i) => (
+              <li key={i}>
+                <Leaf size={17} />
+                <span>{i}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="helper">
+            Данных о соли, добавленном сахаре, насыщенных жирах и аллергенах в
+            этой карточке нет. Сверяйтесь с упаковкой.
+          </p>
+        </Modal>
+      )}
+      {confirm && (
+        <Modal title="Подтвердите действие" onClose={() => setConfirm(null)}>
+          <p className="confirm-text">{confirm.text}</p>
+          <div className="form-actions">
+            <button
+              className="button secondary"
+              onClick={() => setConfirm(null)}
+            >
+              Отмена
+            </button>
+            <button
+              className="button primary"
+              onClick={() => {
+                confirm.action();
+                setConfirm(null);
+              }}
+            >
+              Подтвердить
+            </button>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
