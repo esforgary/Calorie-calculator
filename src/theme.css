@@ -27,6 +27,7 @@
   --focus-ring: #000000;
   --surface-scheme: light;
 }
+::selection { background: var(--accent); color: var(--accent-text); }
 html[data-diary-theme="active"], html[data-diary-theme="active"] body { background: var(--app-background); }
 /* Authentication and session checks use the same saved palette as the diary. */
 .auth-page {

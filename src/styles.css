@@ -101,9 +101,6 @@ img {
   max-width: 100%;
   display: block;
 }
-::selection {
-  background: #e0edca;
-}
 button {
   transition:
     background 0.16s,
@@ -3243,7 +3240,6 @@ main {
   --carbs: #77b4ed;
 }
 body { padding: 0; }
-::selection { background: #b7ff3980; color: #16191c; }
 a { color: #425e13; }
 button:focus-visible, a:focus-visible { outline: 2px solid #82ad2a; }
 input:focus, select:focus, textarea:focus { outline: 2px solid #82ad2a; }
