@@ -44,22 +44,20 @@ export function ProductCard({ product, onEdit, onDelete, onInsight }: ProductCar
         <div className="product-tools">
           <button
             type="button"
-            className="icon-button"
+            className="catalog-action"
             onClick={() => onEdit(product)}
             aria-label={`Редактировать ${product.name}`}
           >
-            <Pencil size={15} />
+            <Pencil size={15} />Изменить
           </button>
-          {product.custom && (
-            <button
+          <button
               type="button"
-              className="icon-button delete"
+              className="catalog-action catalog-delete"
               onClick={() => onDelete(product)}
               aria-label={`Удалить ${product.name}`}
             >
-              <Trash2 size={15} />
-            </button>
-          )}
+              <Trash2 size={15} />Удалить
+          </button>
         </div>
       </div>
       <h3>{product.name}</h3>

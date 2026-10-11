@@ -59,12 +59,15 @@ describe("product amount display", () => {
     expect(product.kcal).toBe(400);
   });
 
-  it("allows editing standard products and only deleting custom ones", async () => {
+  it("shows labeled editing and deletion actions for standard and custom products", async () => {
     await render();
     const edit = host.querySelector('[aria-label="Редактировать Хлопья"]') as HTMLButtonElement;
     await act(async () => edit.click());
     expect(onEdit).toHaveBeenCalledWith(product);
-    expect(host.querySelector('[aria-label="Удалить Хлопья"]')).toBeNull();
+    const standardRemove = host.querySelector('[aria-label="Удалить Хлопья"]') as HTMLButtonElement;
+    expect(standardRemove.textContent).toBe("Удалить");
+    await act(async () => standardRemove.click());
+    expect(onDelete).toHaveBeenCalledWith(product);
     await render({ ...product, custom: true });
     const remove = host.querySelector('[aria-label="Удалить Хлопья"]') as HTMLButtonElement;
     await act(async () => remove.click());

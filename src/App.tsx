@@ -1135,16 +1135,16 @@ export function Diary({ store }: { store: ReturnType<typeof useAppData> }) {
                           </div>
                           <div className="recipe-actions">
                             <button
-                              className="text-button"
+                              className="catalog-action"
                               onClick={() =>
                                 setModal({ type: "recipe", recipe: r })
                               }
                             >
                               <Pencil size={14} />
-                              Изменить рецепт
+                              Изменить
                             </button>
                             <button
-                              className="icon-button delete"
+                              className="catalog-action catalog-delete"
                               aria-label={`Удалить рецепт ${r.name}`}
                               onClick={() =>
                                 setConfirm({
@@ -1159,7 +1159,7 @@ export function Diary({ store }: { store: ReturnType<typeof useAppData> }) {
                                 })
                               }
                             >
-                              <Trash2 size={16} />
+                              <Trash2 size={16} />Удалить
                             </button>
                           </div>
                         </div>

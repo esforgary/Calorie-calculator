@@ -182,3 +182,74 @@ describe('Activity navigation', () => {
     expect(container.querySelector('h1')?.textContent).toBe('Активность');
   });
 });
+
+describe('Catalog deletion', () => {
+  function savedData() {
+    expect(store.setData).toHaveBeenCalledOnce();
+    const update = vi.mocked(store.setData).mock.calls[0][0];
+    return typeof update === 'function' ? update(store.data) : update;
+  }
+
+  it('allows deleting a default product only after confirmation while preserving diary history', async () => {
+    const product = store.data.products[0];
+    expect(product.custom).not.toBe(true);
+    store.data.food[0] = { ...store.data.food[0], productId: product.id, name: product.name };
+    const history = structuredClone(store.data.food);
+    const remainingProducts = store.data.products.filter(item => item.id !== product.id);
+    await render();
+    await clickText('Продукты');
+    await click(`[aria-label="Удалить ${product.name}"]`);
+
+    expect(container.querySelector('[role="dialog"]')?.textContent).toContain(product.name);
+    expect(store.setData).not.toHaveBeenCalled();
+    await clickText('Отмена');
+    expect(store.setData).not.toHaveBeenCalled();
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+
+    await click(`[aria-label="Удалить ${product.name}"]`);
+    await clickText('Подтвердить');
+    const next = savedData();
+    expect(next.products).toEqual(remainingProducts);
+    expect(next.food).toEqual(history);
+    expect(store.data.products).toContain(product);
+  });
+
+  it('keeps a product that is still used as a recipe ingredient', async () => {
+    const product = store.data.products[0];
+    store.data.recipes = [{
+      id: 'linked-recipe', name: 'Каша', ingredients: [{ productId: product.id, grams: 40 }],
+      servings: 1, cookedWeight: 120, emoji: '',
+    }];
+    await render();
+    await clickText('Продукты');
+    await click(`[aria-label="Удалить ${product.name}"]`);
+
+    expect(container.textContent).toContain('Продукт используется в рецепте. Сначала измените рецепт.');
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(store.setData).not.toHaveBeenCalled();
+  });
+
+  it('deletes only the confirmed recipe and preserves ingredients and logged nutrition', async () => {
+    const product = store.data.products[0];
+    const recipe = {
+      id: 'recipe-to-delete', name: 'Каша на завтрак',
+      ingredients: [{ productId: product.id, grams: 40 }], servings: 1, cookedWeight: 120, emoji: '',
+    };
+    const otherRecipe = { ...recipe, id: 'other-recipe', name: 'Другая каша' };
+    store.data.recipes = [recipe, otherRecipe];
+    store.data.food[0] = { ...store.data.food[0], productId: recipe.id, name: recipe.name };
+    const history = structuredClone(store.data.food);
+    const products = structuredClone(store.data.products);
+    await render();
+    await clickText('Мои рецепты');
+    await click(`[aria-label="Удалить рецепт ${recipe.name}"]`);
+    expect(container.querySelector('[role="dialog"]')?.textContent).toContain(recipe.name);
+    expect(store.setData).not.toHaveBeenCalled();
+    await clickText('Подтвердить');
+
+    const next = savedData();
+    expect(next.recipes).toEqual([otherRecipe]);
+    expect(next.products).toEqual(products);
+    expect(next.food).toEqual(history);
+  });
+});
