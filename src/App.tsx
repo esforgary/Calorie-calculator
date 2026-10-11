@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { isAppData, useAppData } from "./useAppData";
 import { FoodIcon } from "./FoodIcon";
+import { OWNER_LOGIN, OWNER_AUTH_EMAIL } from "./ownerAuth";
 import {
   calculateProfile,
   dateOffset,
@@ -239,128 +240,38 @@ function Macro({
   );
 }
 
-function AuthPanel({
-  configured,
-  onSignIn,
-  onSignUp,
-  onDone,
-}: {
+function AuthPanel({ configured, onSignIn, onDone }: {
   configured: boolean;
-  onSignIn: (email: string, password: string) => Promise<void>;
-  onSignUp: (email: string, password: string) => Promise<string>;
+  onSignIn: (login: string, password: string) => Promise<void>;
   onDone: () => void;
 }) {
-  const [mode, setMode] = useState<"login" | "register">("login");
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  async function submit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (busy) return;
     setBusy(true);
-    setMessage("");
     setError("");
-    const values = new FormData(e.currentTarget);
+    const values = new FormData(event.currentTarget);
     try {
-      if (mode === "login") {
-        await onSignIn(
-          String(values.get("email")).trim(),
-          String(values.get("password")),
-        );
-        onDone();
-      } else
-        setMessage(
-          await onSignUp(
-            String(values.get("email")).trim(),
-            String(values.get("password")),
-          ),
-        );
-    } catch (e) {
-      setError(
-        e instanceof Error
-          ? e.message
-          : "Не удалось войти. Попробуйте ещё раз.",
-      );
-    } finally {
-      setBusy(false);
-    }
+      await onSignIn(String(values.get("login")).trim(), String(values.get("password")));
+      onDone();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Не удалось войти. Попробуйте ещё раз.");
+    } finally { setBusy(false); }
   }
-  if (!configured)
-    return (
-      <div className="notice">
-        Подключение авторизации не настроено. Проверьте конфигурацию Supabase.
-      </div>
-    );
-  return (
-    <form className="form-stack" onSubmit={submit}>
-      <div className="segmented">
-        <button
-          type="button"
-          className={mode === "login" ? "active" : ""}
-          onClick={() => {
-            setMode("login");
-            setError("");
-            setMessage("");
-          }}
-        >
-          Вход
-        </button>
-        <button
-          type="button"
-          className={mode === "register" ? "active" : ""}
-          onClick={() => {
-            setMode("register");
-            setError("");
-            setMessage("");
-          }}
-        >
-          Создать аккаунт
-        </button>
-      </div>
-      <label className="field">
-        Email
-        <input
-          autoComplete="email"
-          name="email"
-          type="email"
-          required
-          placeholder="you@example.com"
-        />
-      </label>
-      <label className="field">
-        Пароль
-        <input
-          name="password"
-          type="password"
-          minLength={8}
-          maxLength={128}
-          required
-          autoComplete={mode === "login" ? "current-password" : "new-password"}
-          placeholder="Не менее 8 символов"
-        />
-      </label>
-      <p className="helper">
-        Вход сохраняется на этом устройстве на 30 дней. Дневник привязан к вашему аккаунту.
-      </p>
-      {message && (
-        <div className="notice" role="status">
-          {message}
-        </div>
-      )}
-      {error && (
-        <p className="error-text" role="alert">
-          {error}
-        </p>
-      )}
-      <button className="button primary full-width" disabled={busy}>
-        {busy
-          ? "Подождите…"
-          : mode === "login"
-            ? "Войти в дневник"
-            : "Зарегистрироваться"}
-        <ArrowRight size={17} />
-      </button>
-    </form>
-  );
+  if (!configured) return <div className="notice">Подключение авторизации не настроено. Проверьте конфигурацию Supabase.</div>;
+  return <form className="form-stack" onSubmit={submit}>
+    <label className="field">Логин
+      <input name="login" type="text" autoComplete="username" autoCapitalize="none" spellCheck={false} required defaultValue={OWNER_LOGIN} />
+    </label>
+    <label className="field">Пароль
+      <input name="password" type="password" maxLength={128} required autoComplete="current-password" placeholder="Введите пароль" />
+    </label>
+    <p className="helper">Вход сохраняется на этом устройстве на 30 дней.</p>
+    {error && <p className="error-text" role="alert">{error}</p>}
+    <button className="button primary full-width" disabled={busy}>{busy ? "Вход…" : "Войти в дневник"}<ArrowRight size={17} /></button>
+  </form>;
 }
 
 export default function App() {
@@ -378,7 +289,7 @@ export default function App() {
           <h1>Вход в аккаунт</h1>
           {!store.authReady ? <p className="auth-loading" role="status">Проверка сессии…</p> : <>
             {store.error && <p className="error-text" role="alert">{store.error}</p>}
-            <AuthPanel configured={store.configured} onSignIn={store.signIn} onSignUp={store.signUp} onDone={() => {}} />
+            <AuthPanel configured={store.configured} onSignIn={store.signIn} onDone={() => {}} />
           </>}
         </main>
         <p className="auth-caption">Калории / БЖУ / Активность / Сон</p>
@@ -616,7 +527,7 @@ export function Diary({ store }: { store: ReturnType<typeof useAppData> }) {
           <span className={`save-status ${store.error ? "has-error" : ""}`} title={store.syncStatus}>
             <span /><span className="status-label">{store.syncStatus}</span>
           </span>
-          <button className={`account-avatar ${page === "profile" ? "selected" : ""}`} onClick={() => go("profile")} aria-label="Профиль и цели" title={user?.email}>
+          <button className={`account-avatar ${page === "profile" ? "selected" : ""}`} onClick={() => go("profile")} aria-label="Профиль и цели" title={user?.email === OWNER_AUTH_EMAIL ? OWNER_LOGIN : user?.email}>
             {data.profile.name?.[0]?.toUpperCase() || <Settings2 size={18} />}
           </button>
         </div>
@@ -1675,7 +1586,7 @@ export function Diary({ store }: { store: ReturnType<typeof useAppData> }) {
                   </h2>
                   <p>
                     {user
-                      ? user.email
+                      ? (user.email === OWNER_AUTH_EMAIL ? OWNER_LOGIN : user.email)
                       : "Пока записи хранятся только в этом браузере. Войдите, чтобы вести отдельный дневник в облаке."}
                   </p>
                   <span className="pill">
@@ -1711,7 +1622,7 @@ export function Diary({ store }: { store: ReturnType<typeof useAppData> }) {
                       disabled={!store.authReady}
                       onClick={() => setModal({ type: "auth" })}
                     >
-                      Войти по email
+                      Войти
                       <ArrowRight size={16} />
                     </button>
                   )}
@@ -1841,7 +1752,7 @@ export function Diary({ store }: { store: ReturnType<typeof useAppData> }) {
             <AuthPanel
               configured={store.configured}
               onSignIn={store.signIn}
-              onSignUp={store.signUp}
+
               onDone={() => notify("Вы вошли в дневник")}
             />
           )}

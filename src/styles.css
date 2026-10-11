@@ -3233,7 +3233,7 @@ main {
 /* Graphite interface: dark metrics, light diary, lime actions. */
 :root {
   color: #24272c;
-  background: #c9c7ce;
+  background: #14171c;
   --green: #b7ff39;
   --green-dark: #a3ed23;
   --muted: #72777f;
@@ -3242,16 +3242,16 @@ main {
   --fat: #c79dec;
   --carbs: #77b4ed;
 }
-body { padding: 24px; }
+body { padding: 0; }
 ::selection { background: #b7ff3980; color: #16191c; }
 a { color: #425e13; }
 button:focus-visible, a:focus-visible { outline: 2px solid #82ad2a; }
 input:focus, select:focus, textarea:focus { outline: 2px solid #82ad2a; }
 .app-shell {
   display: block;
-  min-height: calc(100dvh - 48px);
-  max-width: 1580px;
-  margin: 0 auto;
+  min-height: 100dvh;
+  max-width: none;
+  margin: 0;
   padding: 0 26px;
   background: radial-gradient(ellipse at 15% 0, #2d3847 0, transparent 36%), #14171c;
   border: 7px solid #080a0c;
@@ -3467,7 +3467,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid #82ad2a; }
 .about-content > h3 { color: #3e4e5d; }
 .insight-header p, .insight-list { color: #788797; }
 .toast { background: #edf5df; color: #435c20; border-color: #d5e6b4; }
-.auth-page { min-height: calc(100dvh - 48px); background: radial-gradient(ellipse at 30% 0, #303e50, transparent 55%), #14171c; border: 7px solid #080a0c; border-radius: 32px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 36px 22px; }
+.auth-page { min-height: 100dvh; background: radial-gradient(ellipse at 30% 0, #303e50, transparent 55%), #14171c; border: 7px solid #080a0c; border-radius: 32px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 36px 22px; }
 .auth-brand { display: flex; gap: 8px; align-items: center; color: #f3f5f8; font-size: 23px; font-weight: 750; letter-spacing: -.7px; margin-bottom: 30px; }
 .auth-brand > svg { color: var(--green); }
 .auth-brand .brand-dot { margin-left: 0; }
@@ -3480,8 +3480,8 @@ input:focus, select:focus, textarea:focus { outline: 2px solid #82ad2a; }
 .auth-caption { font-size: 11px; color: #909dad; margin-top: 27px; letter-spacing: 1px; }
 .auth-loading { color: #7c8895; padding: 15px 0; font-size: 13px; }
 @media (max-width: 1250px) {
-  body { padding: 16px; }
-  .app-shell { padding: 0 22px; min-height: calc(100dvh - 32px); }
+  body { padding: 0; }
+  .app-shell { padding: 0 22px; min-height: 100dvh; }
   .app-header { gap: 14px; }
   .primary-nav .nav-link { padding: 9px 11px; gap: 5px; font-size: 10px; }
   .status-label { display: none; }

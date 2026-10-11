@@ -26,7 +26,6 @@ const fake = vi.hoisted(() => {
     }),
     getSession: vi.fn(async () => ({ data: { session: state.session }, error: null })),
     signInWithPassword: vi.fn(async () => ({ error: null })),
-    signUp: vi.fn(async () => ({ data: { session: null }, error: null })),
     signOut: vi.fn(async () => ({ error: null })),
   };
   const client = {
@@ -70,12 +69,13 @@ vi.mock('./supabase', async () => {
 });
 import { isAppData, useAppData } from './useAppData';
 import { REMEMBER_SESSION_KEY, REMEMBER_SESSION_MS } from './authSession';
+import { OWNER_AUTH_EMAIL } from './ownerAuth';
 
 const GUEST = 'kall:diary:guest:v1';
 const userKey = (id: string) => `kall:diary:${id}:v1`;
 const account = (id: string, start = Date.now(), sessionId = `${id}-session`): Session => ({
   access_token: `header.${btoa(JSON.stringify({ sub: id, session_id: sessionId, iat: Math.floor(Date.now() / 1000), amr: [{ method: 'password', timestamp: Math.floor(start / 1000) }] }))}.signature`,
-  user: { id, email: `${id}@example.test` },
+  user: { id, email: OWNER_AUTH_EMAIL },
 });
 const row = (data: AppData, revision = 1): Result => ({ data: { data, revision, updated_at: '2026-10-11T08:00:00Z' }, error: null });
 const named = (name: string): AppData => ({ ...createInitialData(), profile: { ...createInitialData().profile, name } });
@@ -114,6 +114,26 @@ afterEach(async () => {
 });
 
 describe('useAppData lifecycle and ownership', () => {
+  it('maps the fixed login to Supabase credentials and rejects other logins before any auth request', async () => {
+    await mount();
+    await expect(view.signIn('someone-else', 'test-only-secret')).rejects.toThrow('Неверный логин или пароль.');
+    expect(fake.client.auth.signInWithPassword).not.toHaveBeenCalled();
+    await act(async () => { await view.signIn(' EsForGary ', 'test-only-secret'); });
+    expect(fake.client.auth.signInWithPassword).toHaveBeenCalledWith({ email: OWNER_AUTH_EMAIL, password: 'test-only-secret' });
+    expect([...Object.values(localStorage)].join(' ')).not.toContain('test-only-secret');
+  });
+
+  it('rejects a valid Supabase session for another email before loading a diary', async () => {
+    const foreign = account('another-user')!;
+    foreign.user.email = 'other@example.test';
+    fake.state.session = foreign;
+    await mount();
+    expect(view.authReady).toBe(true);
+    expect(view.authenticated).toBe(false);
+    expect(fake.state.requests).toHaveLength(0);
+    expect(fake.client.auth.signOut).toHaveBeenCalledWith({ scope: 'local' });
+  });
+
   it('locks the diary and preserves existing guest data without exposing or editing it', async () => {
     localStorage.setItem(GUEST, cache(named('Старый гостевой дневник')));
     await mount();

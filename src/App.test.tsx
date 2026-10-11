@@ -28,7 +28,7 @@ function accountStore(id = 'alice'): Store {
     authReady: true, authPending: false, authenticated: true, editable: true,
     sessionExpiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000,
     configured: true, syncStatus: 'Сохранено', error: null, conflict: false,
-    signIn: vi.fn(async () => {}), signUp: vi.fn(async () => ''), signOut: vi.fn(async () => {}),
+    signIn: vi.fn(async () => {}), signOut: vi.fn(async () => {}),
     retrySync: vi.fn(), useCloudVersion: vi.fn(async () => {}),
   };
 }
@@ -88,7 +88,10 @@ describe('App authentication boundary', () => {
     store = { ...store, user: null, authenticated: false, editable: false };
     await render();
     expectLocked();
-    expect(container.querySelector('input[type="email"]')).not.toBeNull();
+    expect(container.querySelector('input[autocomplete="username"]')).not.toBeNull();
+    expect(container.querySelector('input[type="email"]')).toBeNull();
+    expect(container.textContent).not.toContain('Создать аккаунт');
+    expect(container.textContent).not.toContain('Зарегистрироваться');
     expect(container.querySelector('input[type="password"]')).not.toBeNull();
   });
 

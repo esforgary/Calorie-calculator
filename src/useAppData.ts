@@ -6,6 +6,7 @@ import { createInitialData } from './seed';
 import { configured, sessionPolicy, supabase, supabaseConfigurationError } from './supabase';
 import { REMEMBER_SESSION_KEY } from './authSession';
 import { isFoodIconCategory } from './foodCategories';
+import { isOwnerEmail, resolveOwnerEmail } from './ownerAuth';
 
 interface Cache {
   cacheVersion: 1;
@@ -121,8 +122,8 @@ function storeCache(diary: ActiveDiary): string | null {
 
 function errorText(cause: unknown): string {
   const message = cause instanceof Error ? cause.message : record(cause) && text(cause.message) ? cause.message : 'Неизвестная ошибка';
-  if (/Invalid login credentials/i.test(message)) return 'Неверный email или пароль.';
-  if (/Email not confirmed/i.test(message)) return 'Подтвердите email по ссылке из письма Supabase.';
+  if (/Invalid login credentials/i.test(message)) return 'Неверный логин или пароль.';
+  if (/Email not confirmed/i.test(message)) return 'Аккаунт ещё не активирован в Supabase.';
   if (/User already registered/i.test(message)) return 'Аккаунт с этим email уже зарегистрирован.';
   if (/signup.*disabled|signups.*allowed/i.test(message)) return 'Регистрация отключена. Войдите в существующий аккаунт.';
   if (/kall_diaries_size_limit/i.test(message)) return 'Дневник превысил облачный лимит 4 МБ. Экспортируйте данные и уменьшите количество фотографий.';
@@ -338,7 +339,8 @@ export function useAppData() {
     };
     const reject = (session: Session, reason: string) => {
       lock();
-      setError(reason === 'expired' ? 'Прошло 30 дней после входа. Войдите снова.' : 'Войдите в аккаунт, чтобы открыть дневник.');
+      setError(reason === 'expired' ? 'Прошло 30 дней после входа. Войдите снова.'
+        : reason === 'owner' ? 'Неверный логин или пароль.' : 'Войдите в аккаунт, чтобы открыть дневник.');
       if (rejectedToken === session.access_token) return;
       rejectedToken = session.access_token;
       // Lock immediately even offline. The remembered revocation prevents restoring this token after reload.
@@ -362,6 +364,7 @@ export function useAppData() {
     const changeSession = (session: Session | null) => {
       if (disposed) return;
       if (!session) { lock(); return; }
+      if (!isOwnerEmail(session.user.email)) { reject(session, 'owner'); return; }
       const checked = sessionPolicy.check(session);
       if (!checked.valid) { reject(session, checked.reason); return; }
       rejectedToken = null;
@@ -419,35 +422,18 @@ export function useAppData() {
     return () => window.removeEventListener('beforeunload', warnUnsaved);
   }, []);
 
-  const signIn = useCallback(async (email: string, password: string): Promise<void> => {
+  const signIn = useCallback(async (login: string, password: string): Promise<void> => {
     if (!supabase) throw new Error('Сначала настройте подключение к Supabase.');
     if (authBusy.current) throw new Error('Дождитесь завершения входа или выхода.');
     if (active.current.owner) throw new Error('Сначала выйдите из текущего аккаунта.');
     if (active.current.sequence > 0 && !active.current.savedLocally) throw new Error('Локальные правки не сохранены. Экспортируйте дневник перед входом.');
+    const email = resolveOwnerEmail(login);
     authBusy.current = true;
     setAuthPending(true);
     try {
       if (revocationInFlight.current) await revocationInFlight.current;
-      const result = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+      const result = await supabase.auth.signInWithPassword({ email, password });
       if (result.error) throw new Error(errorText(result.error));
-    } finally { authBusy.current = false; setAuthPending(false); }
-  }, []);
-
-  const signUp = useCallback(async (email: string, password: string): Promise<string> => {
-    if (!supabase) throw new Error('Сначала настройте подключение к Supabase.');
-    if (authBusy.current) throw new Error('Дождитесь завершения входа или выхода.');
-    if (active.current.owner) throw new Error('Сначала выйдите из текущего аккаунта.');
-    if (active.current.sequence > 0 && !active.current.savedLocally) throw new Error('Локальные правки не сохранены. Экспортируйте дневник перед регистрацией.');
-    authBusy.current = true;
-    setAuthPending(true);
-    try {
-      if (revocationInFlight.current) await revocationInFlight.current;
-      const result = await supabase.auth.signUp({
-        email: email.trim(), password,
-        options: { emailRedirectTo: new URL(window.location.pathname, window.location.origin).href },
-      });
-      if (result.error) throw new Error(errorText(result.error));
-      return result.data.session ? 'Аккаунт создан, вы вошли.' : 'Проверьте почту и подтвердите email по ссылке в письме. Затем войдите.';
     } finally { authBusy.current = false; setAuthPending(false); }
   }, []);
 
@@ -482,5 +468,5 @@ export function useAppData() {
     await loadAction.current(true);
   }, []);
 
-  return { data, setData, user, authReady, authPending, authenticated: Boolean(user), sessionExpiresAt, editable: Boolean(user) && canEdit && authReady && !authPending, configured, syncStatus, error, signIn, signUp, signOut, retrySync, conflict, useCloudVersion };
+  return { data, setData, user, authReady, authPending, authenticated: Boolean(user), sessionExpiresAt, editable: Boolean(user) && canEdit && authReady && !authPending, configured, syncStatus, error, signIn, signOut, retrySync, conflict, useCloudVersion };
 }
