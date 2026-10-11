@@ -1,0 +1,185 @@
+/* Account palette. Component roles inherit readable foregrounds for their actual fill. */
+:root {
+  --accent: #b7ff39;
+  --accent-text: #000000;
+  --accent-hover-text: #000000;
+  --app-background: #14171c;
+  --background-ink: #ffffff;
+  --background-muted: #aaabad;
+  --background-line: #373a3e;
+  --background-glow: #212428;
+  --surface: #ffffff;
+  --surface-ink: #000000;
+  --surface-muted: #5c5c5c;
+  --surface-soft: #f1f1f1;
+  --surface-soft-ink: #000000;
+  --surface-tint: #f4ffe1;
+  --surface-tint-ink: #000000;
+  --panel: #272a2e;
+  --panel-ink: #ffffff;
+  --panel-muted: #b1b2b4;
+  --panel-line: #4e5054;
+  --panel-soft: #36393d;
+  --panel-track: #4a4c50;
+  --card: var(--surface);
+  --text: var(--surface-ink);
+  --border: #d9d9d9;
+  --focus-ring: #000000;
+  --surface-scheme: light;
+}
+html[data-diary-theme="active"], html[data-diary-theme="active"] body { background: var(--app-background); }
+.app-shell {
+  --context-fill: var(--app-background);
+  --context-ink: var(--background-ink);
+  --context-muted: var(--background-muted);
+  --context-line: var(--background-line);
+  color: var(--background-ink);
+  background: radial-gradient(ellipse at 15% 0, var(--background-glow), transparent 42%), var(--app-background);
+}
+.app-shell :is(.app-header, .main-footer) { border-color: var(--background-line); }
+.app-shell :is(.brand, .page-heading h1, .activity-launcher h2) { color: var(--background-ink); }
+.app-shell :is(.save-status, .page-heading > div > p, .catalog-toolbar .helper, .page-footnote, .main-footer > span, .main-footer .text-button) { color: var(--background-muted); }
+.app-shell :is(.brand-mark, .brand-dot) { color: var(--background-ink); }
+.app-shell .brand-mark { background: var(--panel); color: var(--panel-ink); }
+.app-shell :is(.card, .modal), .custom-select-menu {
+  --context-fill: var(--surface);
+  --context-ink: var(--surface-ink);
+  --context-muted: var(--surface-muted);
+  --context-line: var(--line);
+  color: var(--context-ink);
+  background: var(--context-fill);
+  border-color: var(--border);
+  color-scheme: var(--surface-scheme);
+}
+.app-shell :is(.nutrition-card, .compact-card, .stat-card, .sleep-hero, .date-picker, .search-field) {
+  --context-fill: var(--panel);
+  --context-ink: var(--panel-ink);
+  --context-muted: var(--panel-muted);
+  --context-line: var(--panel-line);
+  color: var(--context-ink);
+  background: var(--context-fill);
+  border-color: var(--context-line);
+}
+.app-shell :is(.card, .modal, .sleep-hero) :is(h2, h3, .meal-calories, .food-entry strong, .food-entry > b, .product-energy strong, .product-macros b, .log-row > strong, .estimate-list strong, .bmi-value strong, .water-total, .metric > strong, .sleep-summary strong, .ring-label strong, .about-content > h3, .schedule-item strong, .profile-section-heading) { color: var(--context-ink); }
+.app-shell :is(.card-heading > div > p, .eyebrow, .meal-text p, .meal-calories span, .product-category, .product-energy, .product-energy > span, .product-macros, .recipe-body > p, .chart-legend, .chart-value, .chart-day > span:last-child, .chart-caption, .water-card p, .schedule-item > span, .schedule-item p, .log-row p, .log-row small, .bmi-value span, .bmi-card > p, .estimate-list, .account-card p, .modal-heading p, .field, .helper, .food-category-picker legend, .about-content, .insight-header p, .insight-list, .empty-state p, .metric > span, .metric-details, .sleep-summary p, .daily-limit > span, .daily-limit small, .macro > div > span, .macro small, .mini-note, .ring-label span, .calorie-remaining, .sleep-hero p) { color: var(--context-muted); }
+.app-shell :is(.stat-card > p, .stat-card small, .stat-card .helper) { color: var(--panel-muted); }
+.app-shell :is(.empty-state, .empty-state h3, .empty-state h2) { color: var(--context-ink); }
+.app-shell :is(.daily-limit, .meal-group + .meal-group, .product-macros, .insight-link, .schedule-item, .log-row, .ingredient-row, .import-button, .profile-section, .settings-tabs, .theme-settings-actions) { border-color: var(--context-line); }
+.app-shell .primary-nav { background: var(--surface); color: var(--surface-ink); }
+.app-shell .primary-nav .nav-link { color: var(--surface-muted); }
+.app-shell .primary-nav .nav-link:hover { background: var(--surface-soft); color: var(--surface-soft-ink); }
+.app-shell :is(.button.primary, .primary-nav .nav-link.selected, .filters button.active, .segmented > button.active, .activity-type.selected, .activity-intensity.selected, .settings-tabs button.active, .settings-tabs button[aria-selected="true"]) {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+.app-shell :is(.button.primary:hover, .primary-nav .nav-link.selected:hover, .filters button.active:hover) { background: var(--green-dark); border-color: var(--green-dark); color: var(--accent-hover-text); }
+.app-shell .button.secondary { background: var(--context-fill); color: var(--context-ink); border-color: var(--context-line); }
+.app-shell .button.secondary:hover { background: color-mix(in srgb, var(--context-fill) 92%, var(--context-ink)); color: var(--context-ink); }
+.app-shell :is(.text-button, .insight-link, a) { color: var(--context-ink); }
+.app-shell :is(.icon-button, .date-picker .icon-button, .compact-card .icon-button) { color: var(--context-muted); }
+.app-shell :is(.icon-button:hover, .date-picker .icon-button:hover, .compact-card .icon-button:hover) { background: color-mix(in srgb, var(--context-fill) 90%, var(--context-ink)); color: var(--context-ink); }
+.app-shell :is(.add-meal, .water-add) { background: var(--accent); color: var(--accent-text); }
+.app-shell :is(.add-meal:hover, .water-add:hover) { background: var(--green-dark); color: var(--accent-hover-text); }
+.app-shell .calorie-remaining :is(strong, .text-button) { color: var(--panel-ink); }
+.app-shell .ring-label > svg { color: var(--panel-muted); }
+.app-shell .ring-track { stroke: var(--panel-track); }
+.app-shell .track { background: var(--surface-soft); }
+.app-shell :is(.nutrition-card, .compact-card, .stat-card) .track { background: var(--panel-track); }
+.app-shell :is(.filters button, .settings-tabs button) { background: var(--panel); color: var(--panel-ink); border-color: var(--panel-line); }
+.app-shell :is(.filters button:hover, .settings-tabs button:hover) { background: var(--panel-soft); color: var(--panel-ink); }
+.app-shell .search-field input { color: var(--panel-ink); background: transparent; }
+.app-shell .search-field input::placeholder { color: var(--panel-muted); }
+.app-shell :is(.food-entry, .segmented, .recipe-art, .empty-illustration, .file-drop) { background: var(--surface-soft); color: var(--surface-soft-ink); border-color: var(--border); }
+.app-shell .food-entry span { color: var(--surface-soft-ink); }
+.app-shell .segmented > button { color: var(--surface-soft-ink); }
+.app-shell .chart-bar.empty { background: var(--surface-soft); }
+.app-shell :is(.notice, .tip-box, .nutrient-preview, .food-selection-preview, .recipe-icon-preview, .diary-footer, .profile-estimate, .activity-estimate) {
+  --context-fill: var(--surface-tint);
+  --context-ink: var(--surface-tint-ink);
+  --context-muted: var(--surface-tint-ink);
+  color: var(--surface-tint-ink);
+  background: var(--surface-tint);
+  border-color: var(--border);
+}
+.app-shell :is(.tip-box p, .nutrient-preview strong, .profile-estimate span, .profile-estimate strong) { color: var(--surface-tint-ink); }
+.app-shell .calculation-note { color: var(--context-muted); }
+.app-shell .chart-day.chosen > span:last-child { background: var(--surface-tint); color: var(--surface-tint-ink); }
+.app-shell .pill { background: var(--surface-soft); color: var(--surface-soft-ink); }
+.app-shell .nutrition-card .pill { background: var(--panel-soft); color: var(--panel-ink); }
+.app-shell .stat-card .section-icon { background: var(--panel-soft); color: var(--panel-ink); }
+.app-shell .sleep-hero > svg { color: var(--panel-ink); }
+.app-shell .welcome-banner { background: var(--panel); color: var(--panel-ink); border-color: var(--panel-line); }
+.app-shell .welcome-banner p { color: var(--panel-muted); }
+.app-shell .welcome-icon { background: var(--panel-soft); color: var(--panel-ink); }
+.app-shell .welcome-banner .button { background: var(--accent); color: var(--accent-text); }
+.app-shell :is(.field input, .field select, .field textarea, .input, .ingredient-row input, .ingredient-row select, .input.custom-select) { background: var(--surface); color: var(--surface-ink); border-color: var(--border); color-scheme: var(--surface-scheme); }
+.app-shell :is(.field input::placeholder, .field textarea::placeholder) { color: var(--surface-muted); }
+.app-shell :is(button, a, input, select, textarea):focus-visible { outline-color: var(--context-ink); }
+.app-shell :is(input, select, textarea):focus { outline-color: var(--focus-ring); }
+.app-shell .file-drop input::file-selector-button, .app-shell .import-button input::file-selector-button { background: var(--surface-soft); color: var(--surface-soft-ink); border-color: var(--border); }
+.app-shell .food-category-option { background: var(--surface); color: var(--surface-ink); border-color: var(--border); }
+.app-shell .food-category-option:hover { background: var(--surface-soft); color: var(--surface-soft-ink); border-color: var(--context-ink); }
+.app-shell .food-category-option.selected { background: var(--surface-tint); color: var(--surface-tint-ink); border-color: var(--context-ink); box-shadow: inset 0 0 0 1px var(--context-ink); }
+.app-shell .toast { background: var(--surface-tint); color: var(--surface-tint-ink); border-color: var(--border); }
+.app-shell .toast .icon-button { color: var(--surface-tint-ink); }
+.app-shell .sync-banner { background: var(--surface); color: var(--surface-ink); border-color: var(--border); }
+.app-shell .sync-banner .text-button { color: var(--surface-ink); }
+.app-shell .error-text { color: var(--context-ink); border-left: 3px solid #d86f59; padding-left: 10px; }
+.custom-select-option[aria-selected="true"] { background: var(--surface-tint); color: var(--surface-tint-ink); }
+.custom-select-option[data-active="true"] { background: var(--surface-soft); color: var(--surface-soft-ink); }
+.custom-select-option[aria-selected="true"][data-active="true"] { background: var(--surface-tint); color: var(--surface-tint-ink); }
+
+/* Theme editor has an isolated, live preview. Unsaved colors never leave it. */
+.theme-settings { padding: clamp(22px, 3vw, 34px); }
+.theme-settings .card-heading h2 { display: flex; align-items: center; gap: 10px; }
+.theme-settings .card-heading > div > p { margin-top: 7px; }
+.theme-settings-layout { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(260px, .85fr); gap: 36px; align-items: start; }
+.theme-presets { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 24px; }
+.theme-preset { display: flex; align-items: center; gap: 9px; padding: 10px 12px; font-size: 11px; border-radius: 12px; border: 1px solid var(--border); color: var(--surface-ink); background: var(--surface); }
+.theme-preset:hover, .theme-preset[aria-pressed="true"] { border-color: var(--surface-ink); background: var(--surface-soft); }
+.theme-preset-dots { display: flex; padding-left: 3px; }
+.theme-preset-dots i { display: block; height: 16px; width: 16px; border-radius: 50%; margin-left: -3px; border: 1px solid #0002; }
+.theme-color-row { display: flex; align-items: center; gap: 16px; justify-content: space-between; padding: 18px 0; border-bottom: 1px solid var(--line); }
+.theme-color-row label { font-size: 12px; font-weight: 700; color: var(--surface-ink); }
+.theme-color-row p { font-size: 10px; color: var(--surface-muted); margin-top: 4px; }
+.theme-color-input { display: flex; align-items: center; gap: 9px; padding: 6px 10px 6px 6px; border: 1px solid var(--border); border-radius: 12px; flex-shrink: 0; background: var(--surface); }
+.theme-color-input input[type="color"] { width: 34px; height: 34px; border: 0; padding: 0; background: transparent; border-radius: 8px; cursor: pointer; }
+.theme-color-input input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+.theme-color-input input[type="color"]::-webkit-color-swatch { border: 1px solid #0002; border-radius: 7px; }
+.theme-color-input input[type="color"]::-moz-color-swatch { border: 1px solid #0002; border-radius: 7px; }
+.theme-color-input input[type="text"] { min-width: 0; width: 70px; padding: 3px 0; font-size: 12px; font-variant-numeric: tabular-nums; font-family: ui-monospace, monospace; border: 0; color: var(--surface-ink); background: transparent; }
+.theme-color-input:focus-within { outline: 2px solid var(--focus-ring); outline-offset: 3px; }
+.theme-color-input input:focus-visible { outline: none; }
+.theme-contrast-note { margin-top: 18px; max-width: 400px; }
+.theme-preview { padding: 24px; border-radius: 20px; background: var(--app-background); color: var(--background-ink); border: 1px solid var(--background-line); overflow: hidden; }
+.theme-preview-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; font-size: 13px; font-weight: 650; color: var(--background-ink); }
+.theme-preview-heading > i { height: 10px; width: 10px; border-radius: 50%; }
+.theme-preview-card { background: var(--surface); color: var(--surface-ink); padding: 23px; border: 1px solid var(--border); border-radius: 17px; }
+.theme-preview-card > span:first-child { display: block; font-size: 11px; color: var(--surface-muted); }
+.theme-preview-card > strong { display: block; font-size: 29px; font-weight: 600; letter-spacing: -1px; margin-top: 6px; }
+.theme-preview-card > strong small { font-size: 11px; font-weight: 500; letter-spacing: 0; }
+.theme-preview-track { height: 6px; border-radius: 6px; background: var(--surface-soft); margin: 21px 0; overflow: hidden; }
+.theme-preview-track i { display: block; width: 68%; height: 100%; border-radius: inherit; background: var(--accent); }
+.theme-preview-macros { display: flex; justify-content: space-between; gap: 10px; font-size: 9px; color: var(--surface-muted); }
+.theme-preview-macros b { display: block; margin-top: 5px; font-size: 11px; color: var(--surface-ink); }
+.theme-preview-button { display: block; margin-top: 24px; padding: 12px; font-size: 11px; border-radius: 20px; background: var(--accent); text-align: center; }
+.theme-preview > p { margin-top: 17px; font-size: 10px; color: var(--background-muted); text-align: center; }
+.theme-settings-actions { display: flex; align-items: center; gap: 18px; margin-top: 28px; padding-top: 22px; border-top: 1px solid var(--line); }
+.theme-settings-actions > .text-button { display: inline-flex; align-items: center; gap: 7px; }
+.theme-save-status { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--surface-muted); margin-left: auto; }
+@media (max-width: 860px) { .theme-settings-layout { grid-template-columns: 1fr; gap: 26px; } .theme-preview { max-width: 390px; width: 100%; } }
+@media (max-width: 520px) {
+  .theme-settings { padding: 22px 18px; }
+  .theme-settings-actions { flex-wrap: wrap; gap: 16px; }
+  .theme-settings-actions > .button { margin-left: auto; }
+  .theme-save-status { order: 3; flex-basis: 100%; justify-content: flex-end; }
+  .theme-save-status:empty { display: none; }
+  .theme-color-row { gap: 9px; }
+  .theme-color-row p { max-width: 165px; }
+  .theme-color-row label { font-size: 11px; }
+  .theme-color-input { gap: 7px; padding-right: 6px; }
+  .theme-color-input input[type="color"] { width: 28px; height: 32px; }
+  .theme-color-input input[type="text"] { width: 66px; font-size: 11px; }
+  .theme-preview { padding: 20px; }
+}

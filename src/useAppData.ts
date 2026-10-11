@@ -7,6 +7,8 @@ import { configured, sessionPolicy, supabase, supabaseConfigurationError } from 
 import { REMEMBER_SESSION_KEY } from './authSession';
 import { isFoodIconCategory } from './foodCategories';
 import { isOwnerEmail, resolveOwnerEmail } from './ownerAuth';
+import { activityValidationError, isActivityKind } from './activity';
+import type { WalkEntry } from './types';
 
 interface Cache {
   cacheVersion: 1;
@@ -41,6 +43,8 @@ const image = (value: unknown) => value === undefined || (text(value) && value.l
   && /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(value));
 const nutrients = (value: unknown) => record(value) && ['kcal', 'protein', 'fat', 'carbs', 'fiber'].every(key => finite(value[key]) && value[key] >= 0);
 const category = (value: unknown) => value === undefined || isFoodIconCategory(value);
+const theme = (value: unknown) => value === undefined || (record(value)
+  && ['accent', 'background', 'surface'].every(key => text(value[key]) && /^#[0-9a-fA-F]{6}$/.test(value[key])));
 const listOf = (value: unknown, check: (item: Record<string, unknown>) => boolean) => Array.isArray(value) && value.every(item => record(item) && check(item));
 
 /** Validate storage/imported JSON before the interface performs calculations on it. */
@@ -48,6 +52,7 @@ export function isAppData(value: unknown): value is AppData {
   if (!record(value) || value.version !== 1 || !record(value.profile) || !record(value.water)) return false;
   const p = value.profile;
   return text(p.name) && ['female', 'male'].includes(String(p.sex)) && ['lose', 'maintain'].includes(String(p.goal))
+    && theme(value.theme)
     && typeof p.configured === 'boolean'
     && ['age', 'height', 'weight', 'targetWeight', 'activity', 'stepsGoal', 'stride'].every(key => finite(p[key]))
     && Object.values(value.water).every(amount => finite(amount) && amount >= 0)
@@ -59,7 +64,8 @@ export function isAppData(value: unknown): value is AppData {
       && ['breakfast', 'lunch', 'dinner', 'snack'].includes(String(item.meal)) && nutrients(item.nutrients) && image(item.image) && category(item.iconCategory)
       && (item.productId === undefined || text(item.productId)))
     && listOf(value.walks, item => text(item.id) && text(item.date) && text(item.time) && ['easy', 'moderate', 'brisk'].includes(String(item.pace))
-      && ['minutes', 'steps', 'distance', 'weight'].every(key => finite(item[key]) && item[key] >= 0))
+      && ['minutes', 'steps', 'distance', 'weight'].every(key => finite(item[key]) && item[key] >= 0)
+      && (item.kind === undefined || (isActivityKind(item.kind) && activityValidationError(item as unknown as WalkEntry) === null)))
     && listOf(value.sleep, item => text(item.id) && text(item.date) && text(item.bedtime) && text(item.wakeTime) && finite(item.weight) && item.weight >= 0);
 }
 

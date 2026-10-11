@@ -47,6 +47,7 @@ export interface FoodEntry {
   image?: string;
   nutrients: Nutrients;
 }
+export type ActivityKind = "walk" | "running" | "dumbbells" | "cycling" | "gym" | "swimming" | "tennis" | "basketball";
 export interface WalkEntry {
   id: string;
   date: string;
@@ -56,6 +57,8 @@ export interface WalkEntry {
   distance: number;
   pace: "easy" | "moderate" | "brisk";
   weight: number;
+  /** Missing in existing version-1 diaries: interpreted as walking. */
+  kind?: ActivityKind;
 }
 export interface SleepEntry {
   id: string;
@@ -79,6 +82,7 @@ export interface Profile {
 }
 export interface AppData {
   version: 1;
+  theme?: { accent: string; background: string; surface: string };
   profile: Profile;
   products: Product[];
   recipes: Recipe[];

@@ -6,6 +6,7 @@ import type {
   SleepEntry,
   WalkEntry,
 } from "./types";
+import { activityStats } from "./activity";
 
 const emptyNutrients = (): Nutrients => ({
   kcal: 0,
@@ -129,14 +130,7 @@ export function recipeNutrients(
 }
 
 export function walkStats(walk: WalkEntry): { gross: number; active: number } {
-  // 2024 Adult Compendium: easy 2.0–2.4 mph; moderate 2.8–3.4; brisk 3.5–3.9.
-  const met = { easy: 2.8, moderate: 3.8, brisk: 4.8 }[walk.pace] ?? 3.8;
-  const weightHours =
-    (nonnegative(walk.weight) * nonnegative(walk.minutes)) / 60;
-  return {
-    gross: Math.round(met * weightHours),
-    active: Math.round((met - 1) * weightHours),
-  };
+  return activityStats(walk);
 }
 
 export function sleepHours(bedtime: string, wakeTime: string): number {

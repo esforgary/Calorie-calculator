@@ -29,6 +29,10 @@ import {
 } from "lucide-react";
 import { isAppData, useAppData } from "./useAppData";
 import { FoodIcon } from "./FoodIcon";
+import { ActivityForm, ActivityIcon } from "./ActivityForm";
+import { ACTIVITY_KINDS, activityDefinition, isStepActivity } from "./activity";
+import { ThemeSettings } from "./ThemeSettings";
+import { themeStyle, useTheme } from "./theme";
 import { OWNER_LOGIN, OWNER_AUTH_EMAIL } from "./ownerAuth";
 import {
   calculateProfile,
@@ -48,9 +52,9 @@ import {
   ProfileForm,
   RecipeForm,
   SleepForm,
-  WalkForm,
 } from "./Forms";
 import type {
+  ActivityKind,
   FoodEntry,
   MealType,
   Product,
@@ -65,7 +69,8 @@ type ModalState =
   | { type: "food"; meal: MealType }
   | { type: "product"; product?: Product }
   | { type: "recipe"; recipe?: Recipe }
-  | { type: "walk" | "sleep" | "auth" | "about" }
+  | { type: "walk"; kind?: ActivityKind }
+  | { type: "sleep" | "auth" | "about" }
   | null;
 const pages = [
   { id: "dashboard", name: "Мой день", icon: LayoutDashboard },
@@ -117,8 +122,15 @@ function Modal({
   wide?: boolean;
 }) {
   const box = useRef<HTMLDivElement>(null);
+  const [closing, setClosing] = useState(false);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const close = useRef(onClose);
   close.current = onClose;
+  const requestClose = () => {
+    if (closeTimer.current) return;
+    setClosing(true);
+    closeTimer.current = setTimeout(() => close.current(), window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? 0 : 160);
+  };
   useEffect(() => {
     const active = document.activeElement as HTMLElement | null;
     const oldOverflow = document.body.style.overflow;
@@ -128,7 +140,7 @@ function Modal({
       ?.querySelector<HTMLElement>("input, button, select, textarea")
       ?.focus();
     const handleKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") close.current();
+      if (event.key === "Escape" && !event.defaultPrevented) requestClose();
       if (event.key === "Tab" && element) {
         const nodes = [
           ...element.querySelectorAll<HTMLElement>(
@@ -150,14 +162,16 @@ function Modal({
     return () => {
       document.body.style.overflow = oldOverflow;
       document.removeEventListener("keydown", handleKey);
+      if (closeTimer.current) clearTimeout(closeTimer.current);
       active?.focus();
     };
   }, []);
   return (
     <div
       className="modal-backdrop"
+      data-closing={closing}
       onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget) requestClose();
       }}
     >
       <div
@@ -174,7 +188,7 @@ function Modal({
           </div>
           <button
             className="icon-button"
-            onClick={onClose}
+            onClick={requestClose}
             aria-label="Закрыть окно"
           >
             <X size={21} />
@@ -277,12 +291,12 @@ function AuthPanel({ configured, onSignIn, onDone }: {
 export default function App() {
   const store = useAppData();
   useEffect(() => {
-    if (!store.authenticated) document.title = "Вход · Калл";
+    if (!store.authenticated) document.title = "Вход · Ритм";
   }, [store.authenticated]);
   if (!store.authReady || !store.authenticated) {
     return (
       <div className="auth-page">
-        <div className="auth-brand"><Flame size={26} /><span>КАЛЛ<span className="brand-dot">.</span></span></div>
+        <div className="auth-brand"><Flame size={26} /><span>РИТМ<span className="brand-dot">.</span></span></div>
         <main className="auth-card">
           <span className="auth-lock"><LockKeyhole size={26} /></span>
           <span className="eyebrow">ЛИЧНЫЙ ДНЕВНИК ПИТАНИЯ</span>
@@ -301,11 +315,13 @@ export default function App() {
 
 export function Diary({ store }: { store: ReturnType<typeof useAppData> }) {
   const { data, setData, user } = store;
+  useTheme(data.theme);
   const identityRef = useRef(user?.id ?? "guest");
   identityRef.current = user?.id ?? "guest";
   const editableRef = useRef(store.editable);
   editableRef.current = store.editable;
   const [page, setPage] = useState<Page>("dashboard");
+  const [settingsTab, setSettingsTab] = useState<"profile" | "appearance" | "account">("profile");
   const [date, setDate] = useState(today());
   const [modal, setModal] = useState<ModalState>(null);
   const [search, setSearch] = useState("");
@@ -323,10 +339,10 @@ export function Diary({ store }: { store: ReturnType<typeof useAppData> }) {
   );
   const walks = data.walks.filter((e) => e.date === date);
   const sleep = data.sleep.filter((e) => e.date === date);
-  const totalSteps = walks.reduce((sum, w) => sum + w.steps, 0);
+  const totalSteps = walks.filter(w => isStepActivity(w.kind)).reduce((sum, w) => sum + w.steps, 0);
   const activeCalories = walks.reduce((sum, w) => sum + walkStats(w).active, 0);
   const totalMinutes = walks.reduce((sum, w) => sum + w.minutes, 0);
-  const totalDistance = walks.reduce((sum, w) => sum + w.distance, 0);
+  const totalDistance = walks.filter(w => isStepActivity(w.kind)).reduce((sum, w) => sum + w.distance, 0);
   const totalSleep = sleep.reduce(
     (sum, s) => sum + sleepHours(s.bedtime, s.wakeTime),
     0,
@@ -340,7 +356,7 @@ export function Diary({ store }: { store: ReturnType<typeof useAppData> }) {
     return () => clearTimeout(timeout);
   }, [toast]);
   useEffect(() => {
-    document.title = `${page === "profile" ? "Профиль и цели" : pages.find((p) => p.id === page)?.name} · Калл`;
+    document.title = `${page === "profile" ? "Настройки" : pages.find((p) => p.id === page)?.name} · Ритм`;
   }, [page]);
   useEffect(() => {
     setModal(null);
@@ -356,10 +372,7 @@ export function Diary({ store }: { store: ReturnType<typeof useAppData> }) {
     setSearch("");
   };
   const openTracked = (type: "walk" | "sleep") => {
-    if (!hasProfile) {
-      go("profile");
-      setToast("Сначала укажите параметры для расчёта расхода энергии");
-    } else setModal({ type });
+    setModal({ type });
   };
   function canEdit() {
     if (editableRef.current) return true;
@@ -394,7 +407,7 @@ export function Diary({ store }: { store: ReturnType<typeof useAppData> }) {
   function saveWalk(entry: WalkEntry) {
     if (!canEdit()) return;
     setData((d) => ({ ...d, walks: [...d.walks, entry] }));
-    notify("Прогулка записана");
+    notify("Активность записана");
   }
   function saveSleep(entry: SleepEntry) {
     if (!canEdit()) return;
@@ -418,7 +431,7 @@ export function Diary({ store }: { store: ReturnType<typeof useAppData> }) {
     );
     const a = document.createElement("a");
     a.href = url;
-    a.download = `kall-diary-${today()}.json`;
+    a.download = `ritm-diary-${today()}.json`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     setToast("Резервная копия дневника скачана");
@@ -439,7 +452,7 @@ export function Diary({ store }: { store: ReturnType<typeof useAppData> }) {
         return;
       }
       if (!isAppData(parsed))
-        throw new Error("Файл не похож на резервную копию дневника Калл.");
+        throw new Error("Файл не похож на резервную копию дневника Ритм.");
       setConfirm({
         text: "Заменить текущий дневник данными из файла? Перед заменой автоматически скачается копия текущих записей.",
         action: () => {
@@ -508,11 +521,11 @@ export function Diary({ store }: { store: ReturnType<typeof useAppData> }) {
   );
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" style={themeStyle(data.theme)}>
       <header className="app-header">
-        <button className="brand" onClick={() => go("dashboard")} aria-label="Калл — дневник">
+        <button className="brand" onClick={() => go("dashboard")} aria-label="Ритм — дневник">
           <span className="brand-mark"><Flame size={23} /></span>
-          КАЛЛ<span className="brand-dot">.</span>
+          РИТМ<span className="brand-dot">.</span>
         </button>
         <nav className="primary-nav" aria-label="Главная навигация">
           {pages.map((item) => (
@@ -566,10 +579,10 @@ export function Diary({ store }: { store: ReturnType<typeof useAppData> }) {
               )}
             </div>
           )}
-          <div className="page-heading">
+          <div className="page-heading" key={`heading-${page}`}>
             <div>
-              <h1>{page === "dashboard" ? "Дневник питания" : page === "profile" ? "Профиль и цели" : pages.find((p) => p.id === page)?.name}</h1>
-              <p>{{ dashboard: "Калории и состав рациона за день", products: "Каталог продуктов · пищевая ценность на 100 г", recipes: "Состав, порции и пищевая ценность блюд", activity: "Прогулки, шаги и расход энергии", sleep: "Продолжительность и расход энергии", profile: "Параметры расчёта и настройки аккаунта" }[page]}</p>
+              <h1>{page === "dashboard" ? "Дневник питания" : page === "profile" ? "Настройки" : pages.find((p) => p.id === page)?.name}</h1>
+              <p>{{ dashboard: "Калории и состав рациона за день", products: "Каталог продуктов · пищевая ценность на 100 г", recipes: "Состав, порции и пищевая ценность блюд", activity: "Занятия, шаги и расход энергии", sleep: "Продолжительность и расход энергии", profile: "Параметры, оформление и ваш аккаунт" }[page]}</p>
             </div>
             {["dashboard", "activity", "sleep"].includes(page) ? (
               datePicker
@@ -592,6 +605,7 @@ export function Diary({ store }: { store: ReturnType<typeof useAppData> }) {
             ) : null}
           </div>
 
+          <div className="page-view" key={`content-${page}`}>
           {page === "dashboard" && (
             <>
               {!hasProfile && (
@@ -912,7 +926,7 @@ export function Diary({ store }: { store: ReturnType<typeof useAppData> }) {
                       onClick={() => openTracked("walk")}
                     >
                       <Plus size={16} />
-                      Записать прогулку
+                      Записать активность
                     </button>
                   </section>
                   <section className="card compact-card sleep-card">
@@ -1236,6 +1250,15 @@ export function Diary({ store }: { store: ReturnType<typeof useAppData> }) {
 
           {page === "activity" && (
             <>
+              <section className="activity-launcher" aria-label="Виды активности">
+                {ACTIVITY_KINDS.map(kind => (
+                  <button key={kind} onClick={() => setModal({ type: "walk", kind })}>
+                    <ActivityIcon kind={kind} size={23} />
+                    <span>{activityDefinition(kind).label}</span>
+                    <Plus size={15} />
+                  </button>
+                ))}
+              </section>
               <div className="stats-grid">
                 <div className="card stat-card">
                   <span className="section-icon green">
@@ -1270,19 +1293,19 @@ export function Diary({ store }: { store: ReturnType<typeof useAppData> }) {
                   <span className="section-icon blue">
                     <Sun size={22} />
                   </span>
-                  <p>Время на прогулке</p>
+                  <p>Время активности</p>
                   <strong>
                     {number(totalMinutes)} <small>мин</small>
                   </strong>
                   <span className="helper">
-                    {number(totalDistance, 2)} км за день
+                    {number(totalDistance, 2)} км ходьбы и бега
                   </span>
                 </div>
               </div>
               <div className="two-column">
                 <section className="card">
                   <div className="card-heading">
-                    <h2>Мои прогулки</h2>
+                    <h2>Записи за день</h2>
                     <button
                       className="button primary small"
                       onClick={() => openTracked("walk")}
@@ -1295,22 +1318,15 @@ export function Diary({ store }: { store: ReturnType<typeof useAppData> }) {
                     walks.map((w) => (
                       <div className="log-row" key={w.id}>
                         <span className="section-icon green">
-                          <Footprints size={21} />
+                          <ActivityIcon kind={w.kind} size={21} />
                         </span>
                         <div>
-                          <h3>Прогулка в {w.time}</h3>
+                          <h3>{activityDefinition(w.kind).label} <span>· {w.time}</span></h3>
                           <p>
-                            {w.minutes} мин · {number(w.steps)} шагов ·{" "}
-                            {number(w.distance, 2)} км
+                            {w.minutes} мин{isStepActivity(w.kind) && <> · {number(w.steps)} шагов · {number(w.distance, 2)} км</>}
                           </p>
                           <small>
-                            {
-                              {
-                                easy: "Спокойный темп",
-                                moderate: "Умеренный темп",
-                                brisk: "Быстрый темп",
-                              }[w.pace]
-                            }{" "}
+                            {activityDefinition(w.kind).intensity[w.pace].label}{" "}
                             · всего ≈ {walkStats(w).gross} ккал
                           </small>
                         </div>
@@ -1320,10 +1336,10 @@ export function Diary({ store }: { store: ReturnType<typeof useAppData> }) {
                         </strong>
                         <button
                           className="icon-button delete"
-                          aria-label="Удалить прогулку"
+                          aria-label={`Удалить запись: ${activityDefinition(w.kind).label}`}
                           onClick={() =>
                             setConfirm({
-                              text: "Удалить эту прогулку?",
+                              text: "Удалить эту запись активности?",
                               action: () =>
                                 setData((d) => ({
                                   ...d,
@@ -1339,8 +1355,8 @@ export function Diary({ store }: { store: ReturnType<typeof useAppData> }) {
                   ) : (
                     <div className="empty-state">
                       <Footprints size={32} />
-                      <h3>Нет записанных прогулок</h3>
-                      <p>Запишите первую прогулку за этот день.</p>
+                      <h3>Пока нет активности</h3>
+                      <p>Выберите занятие выше или нажмите «Записать».</p>
                     </div>
                   )}
                 </section>
@@ -1516,10 +1532,16 @@ export function Diary({ store }: { store: ReturnType<typeof useAppData> }) {
           )}
 
           {page === "profile" && (
-            <div className="profile-layout">
+            <div className="settings-page">
+              <div className="settings-tabs" role="tablist" aria-label="Разделы настроек">
+                {([{id:"profile",label:"Параметры"},{id:"appearance",label:"Оформление"},{id:"account",label:"Аккаунт и данные"}] as const).map(tab => (
+                  <button key={tab.id} id={`settings-${tab.id}`} role="tab" aria-selected={settingsTab === tab.id} aria-controls={`panel-${tab.id}`} onClick={() => setSettingsTab(tab.id)}>{tab.label}</button>
+                ))}
+              </div>
+              {settingsTab === "profile" && <div id="panel-profile" role="tabpanel" aria-labelledby="settings-profile" className="profile-layout">
               <section className="card profile-form">
                 <div className="card-heading">
-                  <h2>Давайте настроим ваш дневник</h2>
+                  <h2>Параметры и цели</h2>
                   <span className="pill">Для взрослых 20–78 лет</span>
                 </div>
                 <ProfileForm
@@ -1532,7 +1554,7 @@ export function Diary({ store }: { store: ReturnType<typeof useAppData> }) {
                   }}
                 />
               </section>
-              <div className="profile-aside">
+                <div className="profile-aside">
                 <section className="card bmi-card">
                   <span className="eyebrow">ИНДЕКС МАССЫ ТЕЛА</span>
                   <div className="bmi-value">
@@ -1579,6 +1601,12 @@ export function Diary({ store }: { store: ReturnType<typeof useAppData> }) {
                     </div>
                   )}
                 </section>
+                </div>
+              </div>}
+              {settingsTab === "appearance" && <div id="panel-appearance" role="tabpanel" aria-labelledby="settings-appearance" className="appearance-panel">
+                <ThemeSettings value={data.theme} disabled={!store.editable} onSave={theme => { if (!canEdit()) return false; setData(d => ({...d, theme})); setToast("Цвета сохранены"); return true; }} />
+              </div>}
+              {settingsTab === "account" && <div id="panel-account" role="tabpanel" aria-labelledby="settings-account" className="account-panel">
                 <section className="card account-card">
                   <h2>
                     <Cloud size={19} />
@@ -1647,13 +1675,14 @@ export function Diary({ store }: { store: ReturnType<typeof useAppData> }) {
                     />
                   </label>
                 </section>
-              </div>
+              </div>}
             </div>
           )}
+          </div>
           <footer className="main-footer">
             <span>
               <Leaf size={14} />
-              КАЛЛ · Личный дневник
+              РИТМ · Личный дневник
             </span>
             <button
               className="text-button"
@@ -1692,7 +1721,7 @@ export function Diary({ store }: { store: ReturnType<typeof useAppData> }) {
                     ? "Изменить рецепт"
                     : "Ваш новый рецепт"
                   : modal.type === "walk"
-                    ? "Записать прогулку"
+                    ? "Записать активность"
                     : modal.type === "sleep"
                       ? "Записать сон"
                       : modal.type === "auth"
@@ -1704,7 +1733,7 @@ export function Diary({ store }: { store: ReturnType<typeof useAppData> }) {
               ? `${dateLabel(date)} · ${meals.find((m) => m.id === modal.meal)?.name}`
               : undefined
           }
-          wide={modal.type === "recipe"}
+          wide={modal.type === "recipe" || modal.type === "walk"}
           onClose={() => setModal(null)}
         >
           {modal.type === "food" && (
@@ -1733,9 +1762,10 @@ export function Diary({ store }: { store: ReturnType<typeof useAppData> }) {
             />
           )}
           {modal.type === "walk" && (
-            <WalkForm
+            <ActivityForm
               profile={data.profile}
               date={date}
+              initialKind={modal.kind}
               onSave={saveWalk}
               onCancel={() => setModal(null)}
             />
@@ -1775,9 +1805,9 @@ export function Diary({ store }: { store: ReturnType<typeof useAppData> }) {
                 ккал/г, жиры — 9 ккал/г. Ккал с упаковки могут отличаться из-за
                 клетчатки и округления.
               </p>
-              <h3>Ходьба и сон</h3>
+              <h3>Активность и сон</h3>
               <p>
-                Используем MET из Compendium 2024. Активный расход ходьбы = (MET
+                Используем MET из Compendium 2024 для выбранного занятия и нагрузки. Активный расход = (MET
                 − 1) × вес × часы. Сон = 1 MET × вес × часы. Эти значения не
                 увеличивают калорийную цель: обычная активность и сон уже учтены
                 в суточном обмене.

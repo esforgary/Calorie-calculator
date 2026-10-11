@@ -125,6 +125,7 @@ describe('App authentication boundary', () => {
     await render();
     await click('[aria-label="Профиль и цели"]');
     expect(container.querySelector<HTMLInputElement>('input[autocomplete="given-name"]')?.value).toBe('Профиль alice');
+    await clickText('Аккаунт и данные');
     expect(container.textContent).toContain('alice@example.test');
     await clickText('Выйти из аккаунта');
     await clickText('Подтвердить');
@@ -147,7 +148,37 @@ describe('App authentication boundary', () => {
     expect(container.textContent).toContain('Личная запись bob');
     await click('[aria-label="Профиль и цели"]');
     expect(container.querySelector<HTMLInputElement>('input[autocomplete="given-name"]')?.value).toBe('Профиль bob');
+    await clickText('Аккаунт и данные');
     expect(container.textContent).not.toContain('alice@example.test');
     expect(container.textContent).toContain('bob@example.test');
+  });
+});
+
+describe('Activity navigation', () => {
+  it('opens the activity form without routing an unconfigured profile into settings', async () => {
+    store.data.profile.configured = false;
+    await render();
+    await clickText('Активность');
+    await clickText('Записать');
+    expect(container.querySelector('h1')?.textContent).toBe('Активность');
+    const dialog = container.querySelector('[role="dialog"]');
+    expect(dialog).not.toBeNull();
+    expect(dialog?.querySelector('h2')?.textContent).toBe('Записать активность');
+    expect(dialog?.querySelector('.activity-form')).not.toBeNull();
+    const weight = [...dialog!.querySelectorAll('label')].find(label => label.querySelector('span')?.textContent === 'Ваш вес, кг')?.querySelector('input');
+    expect(weight?.value).toBe('');
+    expect(container.querySelector('input[autocomplete="given-name"]')).toBeNull();
+    expect(container.querySelector('[aria-label="Разделы настроек"]')).toBeNull();
+  });
+
+  it('starts the form with the sport selected in the activity launcher', async () => {
+    await render();
+    await clickText('Активность');
+    await clickText('Велосипед');
+    const dialog = container.querySelector('[role="dialog"]');
+    expect(dialog?.querySelector('.activity-type[aria-pressed="true"]')?.textContent).toBe('Велосипед');
+    expect(dialog?.querySelectorAll('.activity-type[aria-pressed="true"]')).toHaveLength(1);
+    expect(dialog?.textContent).not.toContain('Шаги, если считали');
+    expect(container.querySelector('h1')?.textContent).toBe('Активность');
   });
 });

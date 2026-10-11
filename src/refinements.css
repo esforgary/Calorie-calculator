@@ -1,0 +1,168 @@
+/* Comfortable page widths and consistent motion. Scroll remains available. */
+* { scrollbar-width: none; }
+*::-webkit-scrollbar { display: none; width: 0; height: 0; }
+html { scroll-behavior: smooth; }
+button, a, input, textarea, .card, .pill { transition: background-color 180ms ease, color 180ms ease, border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease; }
+button:active:not(:disabled) { transform: scale(.97); }
+svg { flex-shrink: 0; }
+.app-shell { padding-inline: clamp(28px, 4.5vw, 100px); }
+.app-header, .workspace { width: 100%; max-width: 1400px; margin-inline: auto; }
+.workspace > main { padding-top: 34px; }
+.page-heading { margin-bottom: 28px; }
+.page-view, .settings-page [role="tabpanel"] { animation: view-enter 240ms ease both; }
+.add-meal, .icon-button { display: inline-flex; align-items: center; justify-content: center; padding: 0; line-height: 1; }
+.add-meal { width: 32px; height: 32px; min-width: 32px; min-height: 32px; flex: 0 0 32px; border: 0; }
+.add-meal > svg, .icon-button > svg { display: block; margin: 0; }
+.modal { width: 600px; padding: 30px 32px; animation: dialog-enter 220ms ease both; }
+.modal.wide { width: 780px; }
+.modal-backdrop { animation: veil-enter 180ms ease both; }
+.modal-backdrop[data-closing="true"] { animation: veil-exit 160ms ease both; pointer-events: none; }
+.modal-backdrop[data-closing="true"] .modal { animation: dialog-exit 160ms ease both; }
+.form-stack { gap: 20px; }
+.field { gap: 9px; }
+.input.custom-select { padding-right: 19px; }
+
+/* One compact row per product or recipe. */
+.product-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.product-card { display: grid; grid-template-columns: 64px minmax(130px, 1fr) 120px 180px 125px auto; grid-template-rows: auto auto; column-gap: 22px; row-gap: 4px; align-items: center; padding: 18px 22px; }
+.product-top { display: contents; }
+.product-top > .food-icon { grid-column: 1; grid-row: 1 / 3; }
+.product-category { grid-column: 2; grid-row: 1; align-self: end; }
+.product-card h3 { grid-column: 2; grid-row: 2; min-height: 0; margin: 0; align-self: start; font-size: 14px; }
+.product-card > .product-energy { grid-column: 3; grid-row: 1 / 3; }
+.product-card > .product-macros { grid-column: 4; grid-row: 1 / 3; }
+.product-energy { margin: 0; white-space: nowrap; }
+.product-energy strong { font-size: 24px; }
+.product-energy > span { display: block; float: none; margin: 2px 0 0; }
+.product-macros { margin: 0; padding: 0; border: 0; gap: 14px; }
+.product-macros > span { white-space: nowrap; }
+.product-card > .insight-link { grid-column: 5; grid-row: 1 / 3; width: auto; border: 0; margin: 0; padding: 10px 0; justify-content: flex-start; }
+.insight-link svg:last-child { margin-left: 0; }
+.product-tools { grid-column: 6; grid-row: 1 / 3; flex-direction: row; gap: 3px; }
+.product-tools .icon-button { width: 32px; height: 32px; }
+.recipe-card { display: grid; grid-template-columns: 112px minmax(0, 1fr); }
+.recipe-art { height: auto; min-height: 132px; flex-direction: column; gap: 4px; padding: 14px; }
+.recipe-art > .pill { position: static; font-size: 10px; padding: 4px 8px; }
+.recipe-art > .food-icon { width: 66px !important; height: 66px !important; }
+.recipe-body { display: grid; grid-template-columns: minmax(140px, 1fr) 115px 165px auto; column-gap: 24px; row-gap: 6px; align-items: center; padding: 22px; }
+.recipe-body > h3 { grid-column: 1; grid-row: 1; align-self: end; margin: 0; }
+.recipe-body > p { grid-column: 1; grid-row: 2; align-self: start; margin: 0; }
+.recipe-body > .product-energy { grid-column: 2; grid-row: 1 / 3; }
+.recipe-body > .product-macros { grid-column: 3; grid-row: 1 / 3; }
+.recipe-actions { grid-column: 4; grid-row: 1 / 3; gap: 14px; margin: 0; }
+
+/* Activity selection is available before entering a record. */
+.activity-launcher { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 24px; }
+.activity-launcher > button { display: flex; align-items: center; gap: 12px; text-align: left; padding: 18px; border-radius: 17px; background: var(--card, #fdfdfd); color: var(--text, #24272c); border: 1px solid var(--border, #e3e5e7); font-size: 12px; }
+.activity-launcher > button > svg:last-child { margin-left: auto; opacity: .6; }
+.activity-launcher > button:hover { transform: translateY(-2px); border-color: var(--green); }
+.log-row h3 > span { font-weight: 400; opacity: .7; }
+
+/* Settings are separated into focused views, with bounded form widths. */
+.settings-tabs { display: flex; width: fit-content; gap: 5px; padding: 5px; margin-bottom: 24px; border: 1px solid #ffffff12; border-radius: 26px; background: #ffffff08; }
+.settings-tabs > button { padding: 11px 20px; border-radius: 22px; color: var(--background-ink, #e1e5eb); font-size: 12px; }
+.settings-tabs > button[aria-selected="true"] { color: var(--accent-text, #14171c); background: var(--green); }
+.profile-layout { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(270px, .85fr); align-items: start; gap: 24px; }
+.profile-form { padding: 28px; }
+.profile-form > .card-heading { margin-bottom: 26px; }
+.profile-form > .card-heading > h2 { font-size: 18px; }
+.profile-form > .card-heading > .pill { font-size: 10px; }
+.profile-aside { position: sticky; top: 24px; }
+.profile-section { margin: 0; border: 0; padding: 22px 0; display: grid; gap: 18px; border-top: 1px solid var(--line, #e3e5e7); }
+.profile-section:first-child { padding-top: 0; border-top: 0; }
+.profile-section-heading { display: flex; align-items: center; gap: 10px; margin: 0; }
+.profile-section-heading h3, .profile-section-heading legend { margin: 0; font-size: 13px; font-weight: 650; }
+.profile-section-heading > span { display: grid; place-items: center; width: 25px; height: 25px; border-radius: 8px; font-size: 10px; background: color-mix(in srgb, var(--green) 15%, transparent); }
+.profile-estimate { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 18px; border-radius: 15px; background: color-mix(in srgb, var(--green) 12%, transparent); }
+.profile-estimate strong { font-size: 16px; }
+.profile-estimate > div { display: flex; flex-direction: column; gap: 6px; }
+.profile-estimate small { font-size: 10px; font-weight: 400; }
+.profile-estimate-macros { grid-column: 1 / -1; }
+.profile-measurements { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.profile-estimate span { font-size: 12px; line-height: 1.6; }
+.calculation-note { color: var(--muted, #72777f); font-size: 11px; line-height: 1.75; }
+.calculation-note summary { cursor: pointer; padding: 8px 0; }
+.calculation-note[open] p { animation: view-enter 180ms ease both; }
+.profile-method { font-size: 12px; line-height: 1.75; }
+.profile-method summary { cursor: pointer; padding: 8px 0; }
+.profile-method p { margin-top: 9px; }
+.profile-form .form-actions { border-top: 1px solid var(--line); padding-top: 20px; margin-top: 0; }
+.profile-form .form-actions .button { min-width: 180px; }
+.appearance-panel { max-width: 1000px; }
+.account-panel { max-width: 600px; }
+.account-panel .account-card { padding: 30px; }
+.account-panel .account-card .button { margin-top: 24px; }
+.settings-page .bmi-card { padding: 26px; }
+.bmi-value { font-size: 42px; }
+
+@keyframes view-enter { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: none; } }
+@keyframes veil-enter { from { opacity: 0; } to { opacity: 1; } }
+@keyframes veil-exit { to { opacity: 0; } }
+@keyframes dialog-enter { from { opacity: 0; transform: translateY(12px) scale(.98); } to { opacity: 1; transform: none; } }
+@keyframes dialog-exit { to { opacity: 0; transform: translateY(8px) scale(.98); } }
+@media (max-width: 1150px) {
+  .product-card { grid-template-columns: 58px minmax(130px, 1fr) 175px 120px auto; column-gap: 18px; }
+  .product-card > .product-energy { grid-column: 3; grid-row: 1; }
+  .product-card > .product-energy > span { display: inline; }
+  .product-card > .product-macros { grid-column: 3; grid-row: 2; justify-content: flex-start; gap: 12px; font-size: 10px; }
+  .product-card > .insight-link { grid-column: 4; }
+  .product-tools { grid-column: 5; }
+  .recipe-body { grid-template-columns: minmax(110px, 1fr) 150px auto; gap: 8px 18px; }
+  .recipe-body > .product-energy { grid-column: 2; grid-row: 1; }
+  .recipe-body > .product-macros { grid-column: 2; grid-row: 2; gap: 9px; }
+  .recipe-actions { grid-column: 3; flex-direction: column; gap: 8px; }
+  .profile-layout { grid-template-columns: minmax(0, 1.4fr) minmax(240px, .9fr); }
+}
+@media (max-width: 900px) {
+  .profile-layout { grid-template-columns: minmax(0, 1fr); }
+  .profile-aside { position: static; }
+  .profile-aside .bmi-card { max-width: none; }
+  .activity-launcher { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 700px) {
+  .app-shell { padding-inline: 20px; }
+  .app-header { gap: 16px; }
+  .workspace > main { padding-top: 26px; }
+  .page-heading h1 { font-size: 28px; }
+  .modal-backdrop { padding: 12px; }
+  .modal, .modal.wide { padding: 25px 20px; max-height: calc(100dvh - 24px); }
+  .product-card { grid-template-columns: 48px minmax(0, 1fr) auto; column-gap: 12px; row-gap: 6px; padding: 16px; }
+  .product-top > .food-icon { width: 48px !important; height: 48px !important; }
+  .product-card h3 { font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
+  .product-category { font-size: 9px; }
+  .product-card > .product-energy { grid-column: 3; grid-row: 1 / 3; text-align: right; font-size: 9px; }
+  .product-energy strong { font-size: 19px; }
+  .product-card > .product-energy > span { display: block; }
+  .product-card > .product-macros { grid-column: 2 / 4; grid-row: 3; margin-top: 6px; gap: 14px; }
+  .product-card > .insight-link { grid-column: 2; grid-row: 4; font-size: 10px; padding: 5px 0 0; }
+  .product-card > .insight-link > svg:last-child { display: none; }
+  .product-tools { grid-column: 3; grid-row: 4; justify-self: end; }
+  .recipe-card { grid-template-columns: 76px minmax(0, 1fr); }
+  .recipe-art { padding: 8px; justify-content: flex-start; padding-top: 18px; }
+  .recipe-art > .food-icon { width: 54px !important; height: 54px !important; }
+  .recipe-art > .pill { font-size: 8px; padding: 4px; }
+  .recipe-body { grid-template-columns: minmax(0,1fr); padding: 18px 14px; gap: 7px; }
+  .recipe-body > h3, .recipe-body > p, .recipe-body > .product-energy, .recipe-body > .product-macros, .recipe-actions { grid-column: 1; grid-row: auto; }
+  .recipe-body > .product-energy { margin-top: 5px; }
+  .recipe-body > .product-energy > span { display: inline; }
+  .recipe-body > .product-macros { justify-content: flex-start; gap: 14px; flex-wrap: wrap; }
+  .recipe-actions { flex-direction: row; justify-content: space-between; }
+  .activity-launcher { gap: 8px; }
+  .activity-launcher > button { gap: 8px; padding: 14px 12px; font-size: 11px; border-radius: 14px; }
+  .activity-launcher > button > svg:last-child { width: 13px; }
+  .settings-tabs { width: 100%; gap: 2px; }
+  .settings-tabs > button { flex: 1; padding: 10px 7px; font-size: 11px; white-space: nowrap; }
+  .profile-form, .account-panel .account-card { padding: 21px 18px; }
+  .profile-form > .card-heading { gap: 10px; }
+  .profile-form > .card-heading > h2 { font-size: 17px; }
+  .profile-form > .card-heading > .pill { font-size: 8px; white-space: nowrap; }
+  .profile-estimate { grid-template-columns: 1fr; }
+  .profile-measurements { grid-template-columns: 1fr 1fr; }
+  .profile-measurements > :last-child { grid-column: 1 / -1; }
+  .profile-section[aria-labelledby="profile-goal-title"] .form-grid { grid-template-columns: 1fr; }
+  .profile-section { gap: 16px; padding-block: 20px; }
+}
+@media (max-width: 370px) { .app-shell { padding-inline: 16px; } .settings-tabs > button { font-size: 10px; } }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}

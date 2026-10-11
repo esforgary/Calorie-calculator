@@ -11,7 +11,6 @@ import type {
   Profile,
   Recipe,
   SleepEntry,
-  WalkEntry,
 } from "./types";
 import {
   calculateProfile,
@@ -20,9 +19,9 @@ import {
   scaleNutrients,
   sleepCalories,
   sleepHours,
-  walkStats,
 } from "./nutrition";
 import { FoodIcon } from "./FoodIcon";
+import { CustomSelect } from "./Select";
 import { PRODUCT_CATEGORIES, RECIPE_CATEGORIES, foodCategoryLabel, resolveFoodCategory } from "./foodCategories";
 
 const mealNames: Record<MealType, string> = {
@@ -530,11 +529,12 @@ export function RecipeForm({
       {ingredients.map((item, index) => (
         <div className="ingredient-row" key={item.key}>
           <Field label={`Ингредиент ${index + 1}`}>
-            <select
+            <CustomSelect
+              aria-label={`Ингредиент ${index + 1}`}
               className="input"
               value={item.productId}
-              onChange={(event) =>
-                updateIngredient(item.key, { productId: event.target.value })
+              onValueChange={(productId) =>
+                updateIngredient(item.key, { productId })
               }
               required
             >
@@ -552,7 +552,7 @@ export function RecipeForm({
                   {product.name}
                 </option>
               ))}
-            </select>
+            </CustomSelect>
           </Field>
           <NumberField
             label="Вес, г"
@@ -742,10 +742,11 @@ export function FoodForm({
         />
       </Field>
       <Field label={mode === "product" ? "Продукт" : "Рецепт"}>
-        <select
+        <CustomSelect
+          aria-label={mode === "product" ? "Продукт" : "Рецепт"}
           className="input"
           value={selected?.id ?? ""}
-          onChange={(event) => setSelectedId(event.target.value)}
+          onValueChange={setSelectedId}
           required
         >
           {!filtered.length && <option value="">Ничего не найдено</option>}
@@ -754,7 +755,7 @@ export function FoodForm({
               {item.name}
             </option>
           ))}
-        </select>
+        </CustomSelect>
       </Field>
       {selected && <div className="food-selection-preview"><FoodIcon food={selected} products={products} size={52} /><div><strong>{selected.name}</strong><p className="helper">{foodCategoryLabel(resolveFoodCategory(selected, products))}</p></div></div>}
       {!filtered.length && (
@@ -768,17 +769,18 @@ export function FoodForm({
       )}
       <div className="form-grid">
         <Field label="Приём пищи">
-          <select
+          <CustomSelect
+            aria-label="Приём пищи"
             className="input"
             value={mealType}
-            onChange={(event) => setMealType(event.target.value as MealType)}
+            onValueChange={(value) => setMealType(value as MealType)}
           >
             {Object.entries(mealNames).map(([key, name]) => (
               <option value={key} key={key}>
                 {name}
               </option>
             ))}
-          </select>
+          </CustomSelect>
         </Field>
         <NumberField
           label="Размер порции, г"
@@ -888,18 +890,21 @@ export function ProfileForm({
     onSave(nextProfile);
   }
   return (
-    <form className="form-stack" onSubmit={submit} noValidate>
-      <Field label="Как вас называть">
-        <input
-          className="input"
-          value={name}
-          maxLength={60}
-          onChange={(event) => setName(event.target.value)}
-          placeholder="Ваше имя (необязательно)"
-          autoComplete="given-name"
-        />
-      </Field>
-      <div className="form-grid">
+    <form className="form-stack profile-fields" onSubmit={submit} noValidate>
+      <section className="profile-section" aria-labelledby="profile-body-title">
+        <div className="profile-section-heading"><span>01</span><h3 id="profile-body-title">Личные параметры</h3></div>
+        <div className="form-grid">
+          <Field label="Имя">
+            <input className="input" value={name} maxLength={60} onChange={(event) => setName(event.target.value)} placeholder="Необязательно" autoComplete="given-name" />
+          </Field>
+          <Field label="Пол для расчёта обмена">
+            <CustomSelect aria-label="Пол для расчёта обмена" value={sex} onValueChange={(value) => setSex(value as Profile["sex"])}>
+              <option value="female">Женский</option>
+              <option value="male">Мужской</option>
+            </CustomSelect>
+          </Field>
+        </div>
+        <div className="form-grid profile-measurements">
         <NumberField
           label="Возраст, лет"
           value={values.age}
@@ -908,16 +913,6 @@ export function ProfileForm({
           max={78}
           step={1}
         />
-        <Field label="Пол для расчёта обмена">
-          <select
-            className="input"
-            value={sex}
-            onChange={(event) => setSex(event.target.value as Profile["sex"])}
-          >
-            <option value="female">Женский</option>
-            <option value="male">Мужской</option>
-          </select>
-        </Field>
         <NumberField
           label="Рост, см"
           value={values.height}
@@ -933,28 +928,20 @@ export function ProfileForm({
           max={350}
         />
       </div>
-      <Field label="Повседневная активность">
-        <select
-          className="input"
-          value={values.activity}
-          onChange={(event) => setValue("activity", event.target.value)}
-        >
-          <option value="1.2">Низкая — преимущественно сидячий день</option>
-          <option value="1.375">Лёгкая — немного ходьбы и занятий</option>
-          <option value="1.55">Средняя — регулярная активность</option>
-          <option value="1.725">Высокая — много движения каждый день</option>
-        </select>
-      </Field>
+      </section>
+      <section className="profile-section" aria-labelledby="profile-goal-title">
+        <div className="profile-section-heading"><span>02</span><h3 id="profile-goal-title">Цель и образ жизни</h3></div>
       <div className="form-grid">
         <Field label="Цель">
-          <select
+          <CustomSelect
+            aria-label="Цель"
             className="input"
             value={goal}
-            onChange={(event) => setGoal(event.target.value as Profile["goal"])}
+            onValueChange={(value) => setGoal(value as Profile["goal"])}
           >
             <option value="lose">Плавное снижение веса</option>
             <option value="maintain">Поддержание веса</option>
-          </select>
+          </CustomSelect>
         </Field>
         <NumberField
           label="Целевой вес, кг"
@@ -964,6 +951,17 @@ export function ProfileForm({
           max={350}
         />
       </div>
+        <Field label="Повседневная активность">
+          <CustomSelect aria-label="Повседневная активность" value={values.activity} onValueChange={(value) => setValue("activity", value)}>
+            <option value="1.2">Низкая — преимущественно сидячий день</option>
+            <option value="1.375">Лёгкая — немного ходьбы и занятий</option>
+            <option value="1.55">Средняя — регулярная активность</option>
+            <option value="1.725">Высокая — много движения каждый день</option>
+          </CustomSelect>
+        </Field>
+      </section>
+      <section className="profile-section" aria-labelledby="profile-steps-title">
+        <div className="profile-section-heading"><span>03</span><h3 id="profile-steps-title">Шаги и расстояние</h3></div>
       <div className="form-grid">
         <NumberField
           label="Цель шагов в день"
@@ -982,148 +980,23 @@ export function ProfileForm({
         />
       </div>
       <p className="helper">
-        Длина шага нужна для примерного расстояния. Её можно измерить: пройдите
-        10 шагов и разделите расстояние на 10. Цель шагов — личный ориентир, а
-        не гарантия похудения.
+        Чтобы измерить длину шага, пройдите 10 шагов и разделите расстояние на 10.
       </p>
+      </section>
       {estimate.target > 0 && (
-        <div className="nutrient-preview" aria-live="polite">
-          <strong>Ориентир: {fmt(estimate.target)} ккал в день</strong>
-          <span>
-            ИМТ{" "}
-            {estimate.bmi.toLocaleString("ru-RU", { maximumFractionDigits: 2 })}{" "}
-            · {estimate.bmiLabel}
-          </span>
-          <span>
-            Белки {estimate.protein} г · Жиры {estimate.fat} г · Углеводы{" "}
-            {estimate.carbs} г
-          </span>
+        <div className="profile-estimate" aria-live="polite">
+          <div><span>Ориентир на день</span><strong>{fmt(estimate.target)} <small>ккал</small></strong></div>
+          <div><span>Индекс массы тела</span><strong>{estimate.bmi.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}</strong><small>{estimate.bmiLabel}</small></div>
+          <div className="profile-estimate-macros"><span>БЖУ на день</span><strong>{estimate.protein} / {estimate.fat} / {estimate.carbs} <small>г</small></strong><small>Белки / жиры / углеводы</small></div>
         </div>
       )}
-      <p className="notice">
-        Расчёт приблизительный, для взрослых 20–78 лет вне беременности и
-        грудного вскармливания. ИМТ — ориентир, не диагноз. При снижении веса
-        используется умеренное уменьшение расчётных калорий; при ИМТ ниже 18,5
-        оно отключается.
-      </p>
+      <details className="profile-method">
+        <summary>Как рассчитывается цель</summary>
+        <p className="helper">Расчёт учитывает возраст, пол, рост, вес и обычную активность. Для снижения веса применяется умеренный дефицит калорий; при ИМТ ниже 18,5 он отключается. Расход тренировок и сна не прибавляется к лимиту питания.</p>
+        <p className="helper">Модель приблизительная: для взрослых 20–78 лет вне беременности и грудного вскармливания. ИМТ — ориентир, а не диагноз; цель шагов — личный ориентир движения.</p>
+      </details>
       <ErrorMessage message={error} />
       <Actions label="Сохранить профиль" />
-    </form>
-  );
-}
-
-export function WalkForm({
-  profile,
-  date,
-  onSave,
-  onCancel,
-}: {
-  profile: Profile;
-  date: string;
-  onSave: (entry: WalkEntry) => void;
-  onCancel: () => void;
-}) {
-  const [minutes, setMinutes] = useState("30");
-  const [steps, setSteps] = useState("3000");
-  const [distance, setDistance] = useState("");
-  const [pace, setPace] = useState<WalkEntry["pace"]>("moderate");
-  const [time, setTime] = useState(() => {
-    const now = new Date();
-    return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-  });
-  const [error, setError] = useState("");
-  const estimatedDistance = (Number(steps) * profile.stride) / 1000;
-  const preview: WalkEntry = {
-    id: "",
-    date,
-    time,
-    minutes: Number(minutes),
-    steps: Number(steps),
-    distance: distance.trim() === "" ? estimatedDistance : Number(distance),
-    pace,
-    weight: profile.weight,
-  };
-  const calories = walkStats(preview);
-  function submit(event: FormEvent<HTMLFormElement>) {
-    stop(event);
-    setError("");
-    if (!inRange(minutes, 1, 600))
-      return setError("Укажите длительность от 1 до 600 минут.");
-    if (!inRange(steps, 1, 100000) || !Number.isInteger(Number(steps)))
-      return setError("Укажите целое количество шагов от 1 до 100 000.");
-    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time))
-      return setError("Укажите время начала прогулки.");
-    if (distance.trim() !== "" && !inRange(distance, 0.001, 300))
-      return setError(
-        "Расстояние должно быть больше 0 и не больше 300 км. Или оставьте поле пустым для расчёта по шагам.",
-      );
-    onSave({ ...preview, id: crypto.randomUUID() });
-  }
-  return (
-    <form className="form-stack" onSubmit={submit} noValidate>
-      <div className="form-grid">
-        <Field label="Время начала">
-          <input
-            className="input"
-            type="time"
-            value={time}
-            onChange={(event) => setTime(event.target.value)}
-            required
-          />
-        </Field>
-        <NumberField
-          label="Длительность, мин"
-          value={minutes}
-          set={setMinutes}
-          min={1}
-          max={600}
-        />
-        <NumberField
-          label="Количество шагов"
-          value={steps}
-          set={setSteps}
-          min={1}
-          max={100000}
-          step={1}
-        />
-        <NumberField
-          label="Расстояние, км (необязательно)"
-          value={distance}
-          set={setDistance}
-          min={0.001}
-          max={300}
-          placeholder={fmt(estimatedDistance)}
-          required={false}
-        />
-      </div>
-      <p className="helper">
-        Без расстояния используем шаги ×{" "}
-        {profile.stride.toLocaleString("ru-RU", { maximumFractionDigits: 2 })}{" "}
-        м: примерно {fmt(estimatedDistance)} км. Шаги этой прогулки войдут в
-        дневной итог.
-      </p>
-      <Field label="Темп по ровной поверхности">
-        <select
-          className="input"
-          value={pace}
-          onChange={(event) => setPace(event.target.value as WalkEntry["pace"])}
-        >
-          <option value="easy">Спокойный · примерно 3,2–3,9 км/ч</option>
-          <option value="moderate">Умеренный · примерно 4,5–5,5 км/ч</option>
-          <option value="brisk">Быстрый · примерно 5,6–6,3 км/ч</option>
-        </select>
-      </Field>
-      <div className="nutrient-preview" aria-live="polite">
-        <strong>Активный расход ≈ {calories.active} ккал</strong>
-        <span>Общий за время прогулки ≈ {calories.gross} ккал</span>
-      </div>
-      <p className="helper">
-        Оценка по темпу, времени и весу. Расход в покое вычтен из активных
-        калорий. Запись не увеличивает лимит питания: обычное движение уже
-        учтено в профиле.
-      </p>
-      <ErrorMessage message={error} />
-      <Actions onCancel={onCancel} label="Записать прогулку" />
     </form>
   );
 }
@@ -1141,6 +1014,7 @@ export function SleepForm({
 }) {
   const [bedtime, setBedtime] = useState(`${dateOffset(date, -1)}T23:00`);
   const [wakeTime, setWakeTime] = useState(`${date}T07:00`);
+  const [weight, setWeight] = useState(profile.configured ? String(profile.weight) : "");
   const [error, setError] = useState("");
   const hours = sleepHours(bedtime, wakeTime);
   const recordDate = wakeTime.slice(0, 10);
@@ -1149,11 +1023,13 @@ export function SleepForm({
     date: recordDate,
     bedtime,
     wakeTime,
-    weight: profile.weight,
+    weight: Number(weight),
   };
   function submit(event: FormEvent<HTMLFormElement>) {
     stop(event);
     setError("");
+    if (!inRange(weight, 30, 350))
+      return setError("Укажите текущий вес от 30 до 350 кг для расчёта расхода во сне.");
     if (
       !bedtime ||
       !wakeTime ||
@@ -1187,6 +1063,7 @@ export function SleepForm({
           required
         />
       </Field>
+      <NumberField label="Текущий вес, кг" value={weight} set={setWeight} min={30} max={350} placeholder="Укажите вес" />
       {recordDate && recordDate !== date && (
         <p className="notice">
           Запись будет сохранена за {recordDate.split("-").reverse().join(".")},
@@ -1195,7 +1072,7 @@ export function SleepForm({
       )}
       <div className="nutrient-preview" aria-live="polite">
         <strong>Продолжительность: {fmt(hours)} ч</strong>
-        <span>Примерный расход во сне: {sleepCalories(preview)} ккал</span>
+        <span>{inRange(weight, 30, 350) ? `Примерный расход во сне: ${sleepCalories(preview)} ккал` : "Укажите вес для расчёта расхода"}</span>
       </div>
       <p className="helper">
         Это справочная оценка. Расход во сне уже входит в суточный обмен и не
