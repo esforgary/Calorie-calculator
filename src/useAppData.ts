@@ -147,8 +147,6 @@ function errorText(cause: unknown): string {
   const message = cause instanceof Error ? cause.message : record(cause) && text(cause.message) ? cause.message : 'Неизвестная ошибка';
   if (/Invalid login credentials/i.test(message)) return 'Неверный логин или пароль.';
   if (/Email not confirmed/i.test(message)) return 'Аккаунт ещё не активирован в Supabase.';
-  if (/User already registered/i.test(message)) return 'Аккаунт с этим email уже зарегистрирован.';
-  if (/signup.*disabled|signups.*allowed/i.test(message)) return 'Регистрация отключена. Войдите в существующий аккаунт.';
   if (/kall_diaries_size_limit/i.test(message)) return 'Дневник превысил облачный лимит 4 МБ. Экспортируйте данные и уменьшите количество фотографий.';
   if (/permission denied|row-level security/i.test(message)) return 'Нет доступа к дневнику. Проверьте вход в аккаунт и политики доступа из supabase/schema.sql.';
   if (/schema cache|relation .* does not exist/i.test(message)) return 'Таблица дневника пока не настроена. Выполните supabase/schema.sql в SQL Editor проекта Supabase и нажмите «Повторить». Другие таблицы не меняются.';
