@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it } from "vitest";
-import { contrastRatio, contrastText, DEFAULT_THEME, normalizeHex, sanitizeTheme, themeTokens, useTheme } from "./theme";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { contrastRatio, contrastText, DEFAULT_THEME, initializeTheme, normalizeHex, readSavedTheme, sanitizeTheme, THEME_STORAGE_KEY, themeTokens, useTheme } from "./theme";
 
 describe("theme colors", () => {
   it("normalizes shorthand and rejects CSS expressions, alpha colors and malformed imported values", () => {
@@ -45,10 +45,40 @@ describe("theme colors", () => {
   });
 });
 
-afterEach(() => { document.documentElement.removeAttribute("style"); document.documentElement.removeAttribute("data-diary-theme"); });
+afterEach(() => {
+  vi.restoreAllMocks(); localStorage.clear();
+  document.documentElement.removeAttribute("style"); document.documentElement.removeAttribute("data-diary-theme");
+  document.querySelector('meta[name="theme-color"]')?.remove();
+});
 
-describe("authenticated theme lifecycle", () => {
-  it("updates portal/body colors and restores the default document on logout", async () => {
+describe("startup appearance", () => {
+  it("applies saved colors and browser chrome before React or session checks run", () => {
+    const palette = { accent: "#7bb8ff", background: "#101c2b", surface: "#edf4fc" };
+    localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify({ ...palette, unrelated: "discard" }));
+    const meta = document.createElement('meta'); meta.name = 'theme-color'; meta.content = '#14171c'; document.head.append(meta);
+    initializeTheme();
+    expect(readSavedTheme()).toEqual(palette);
+    expect(document.documentElement.style.getPropertyValue('--accent')).toBe(palette.accent);
+    expect(document.documentElement.style.getPropertyValue('--app-background')).toBe(palette.background);
+    expect(document.documentElement.style.getPropertyValue('--surface')).toBe(palette.surface);
+    expect(meta.content).toBe(palette.background);
+  });
+  it("ignores broken, partial or CSS-injecting palette caches", () => {
+    for (const invalid of ['{bad', 'null', '[]', JSON.stringify({accent:'#fff'}), JSON.stringify({...DEFAULT_THEME, background:'url(https://example.test)'})]) {
+      localStorage.setItem(THEME_STORAGE_KEY, invalid);
+      expect(readSavedTheme()).toEqual(DEFAULT_THEME);
+      expect(() => initializeTheme()).not.toThrow();
+    }
+  });
+  it("can start when browser storage is disabled", () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new DOMException('Denied', 'SecurityError'); });
+    expect(readSavedTheme()).toEqual(DEFAULT_THEME);
+    expect(() => initializeTheme()).not.toThrow();
+  });
+});
+
+describe("document theme lifecycle", () => {
+  it("updates portal/body colors and restores the host document on unmount", async () => {
     Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
     const host = document.createElement("div");
     document.body.append(host);

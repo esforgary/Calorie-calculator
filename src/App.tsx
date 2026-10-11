@@ -33,7 +33,7 @@ import { ProductCard } from "./ProductCard";
 import { ActivityForm, ActivityIcon } from "./ActivityForm";
 import { ACTIVITY_KINDS, activityDefinition, isStepActivity } from "./activity";
 import { ThemeSettings } from "./ThemeSettings";
-import { themeStyle, useTheme } from "./theme";
+import { themeStyle, useApplicationTheme } from "./theme";
 import { OWNER_LOGIN, OWNER_AUTH_EMAIL } from "./ownerAuth";
 import {
   calculateProfile,
@@ -291,6 +291,11 @@ function AuthPanel({ configured, onSignIn, onDone }: {
 
 export default function App() {
   const store = useAppData();
+  return <AppView store={store} />;
+}
+
+export function AppView({ store }: { store: ReturnType<typeof useAppData> }) {
+  useApplicationTheme(store.data.theme, store.authReady && store.authenticated);
   useEffect(() => {
     if (!store.authenticated) document.title = "Вход · Ритм";
   }, [store.authenticated]);
@@ -316,7 +321,6 @@ export default function App() {
 
 export function Diary({ store }: { store: ReturnType<typeof useAppData> }) {
   const { data, setData, user } = store;
-  useTheme(data.theme);
   const identityRef = useRef(user?.id ?? "guest");
   identityRef.current = user?.id ?? "guest";
   const editableRef = useRef(store.editable);

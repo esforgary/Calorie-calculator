@@ -28,6 +28,35 @@
   --surface-scheme: light;
 }
 html[data-diary-theme="active"], html[data-diary-theme="active"] body { background: var(--app-background); }
+/* Authentication and session checks use the same saved palette as the diary. */
+.auth-page {
+  color: var(--background-ink);
+  background: radial-gradient(ellipse at 15% 0, var(--background-glow), transparent 42%), var(--app-background);
+}
+.auth-page :is(.auth-brand, .auth-brand > svg, .brand-dot) { color: var(--background-ink); }
+.auth-page .auth-caption { color: var(--background-muted); }
+.auth-card {
+  color: var(--surface-ink);
+  background: var(--surface);
+  border-color: var(--border);
+  color-scheme: var(--surface-scheme);
+}
+.auth-card h1 { color: var(--surface-ink); }
+.auth-card :is(.eyebrow, .helper, .auth-loading, .field) { color: var(--surface-muted); }
+.auth-card .auth-lock { background: var(--accent); color: var(--accent-text); }
+.auth-card .field input { background: var(--surface); color: var(--surface-ink); border-color: var(--border); color-scheme: var(--surface-scheme); }
+.auth-card .field input::placeholder { color: var(--surface-muted); }
+.auth-card .field input:autofill {
+  -webkit-text-fill-color: var(--surface-ink);
+  caret-color: var(--surface-ink);
+  box-shadow: inset 0 0 0 1000px var(--surface);
+}
+.auth-card :is(button, a, input):focus-visible { outline-color: var(--surface-ink); }
+.auth-card input:focus { outline-color: var(--focus-ring); }
+.auth-card .button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.auth-card .button.primary:hover { background: var(--green-dark); border-color: var(--green-dark); color: var(--accent-hover-text); }
+.auth-card .error-text { color: var(--surface-soft-ink); background: var(--surface-soft); border-left: 3px solid #d86f59; }
+.auth-card .notice { color: var(--surface-tint-ink); background: var(--surface-tint); border-color: var(--border); }
 .app-shell {
   --context-fill: var(--app-background);
   --context-ink: var(--background-ink);

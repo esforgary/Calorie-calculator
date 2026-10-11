@@ -7,6 +7,7 @@ import App from './App';
 import { createInitialData } from './seed';
 import { today } from './nutrition';
 import { useAppData } from './useAppData';
+import { DEFAULT_THEME, THEME_STORAGE_KEY } from './theme';
 
 vi.mock('./useAppData', () => ({ useAppData: vi.fn(), isAppData: vi.fn() }));
 
@@ -63,6 +64,7 @@ function expectLocked() {
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   vi.clearAllMocks();
+  localStorage.clear();
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -72,6 +74,7 @@ beforeEach(() => {
 afterEach(async () => {
   await act(async () => { root.unmount(); });
   container.remove();
+  localStorage.clear();
   vi.restoreAllMocks();
 });
 
@@ -151,6 +154,60 @@ describe('App authentication boundary', () => {
     await clickText('Аккаунт и данные');
     expect(container.textContent).not.toContain('alice@example.test');
     expect(container.textContent).toContain('bob@example.test');
+  });
+});
+
+describe('Application appearance across authentication', () => {
+  const rememberedTheme = { accent: '#73b3ff', background: '#101c29', surface: '#d3dce5' };
+  const accountTheme = { accent: '#ffc17d', background: '#211b19', surface: '#fff5e8' };
+
+  function expectAppearance(theme: typeof rememberedTheme) {
+    const style = document.documentElement.style;
+    expect(style.getPropertyValue('--accent')).toBe(theme.accent);
+    expect(style.getPropertyValue('--app-background')).toBe(theme.background);
+    expect(style.getPropertyValue('--surface')).toBe(theme.surface);
+  }
+
+  it('uses remembered colors during session checking, updates them on login and retains them after logout', async () => {
+    localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify(rememberedTheme));
+    store = { ...store, user: null, authReady: false, authenticated: false, editable: false };
+    store.data.theme = accountTheme;
+    await render();
+
+    expectAppearance(rememberedTheme);
+    expectLocked();
+    expect(container.querySelector('[role="status"]')?.textContent).toBe('Проверка сессии…');
+    expect(container.querySelector('form')).toBeNull();
+    expect(JSON.parse(localStorage.getItem(THEME_STORAGE_KEY)!)).toEqual(rememberedTheme);
+
+    store = accountStore();
+    store.data.theme = accountTheme;
+    await render();
+    expectAppearance(accountTheme);
+    expect(container.querySelector('h1')?.textContent).toBe('Дневник питания');
+    expect(JSON.parse(localStorage.getItem(THEME_STORAGE_KEY)!)).toEqual(accountTheme);
+
+    store = { ...store, user: null, authenticated: false, editable: false };
+    await render();
+    expectAppearance(accountTheme);
+    expectLocked();
+    expect(container.querySelector('input[type="password"]')).not.toBeNull();
+    expect(JSON.parse(localStorage.getItem(THEME_STORAGE_KEY)!)).toEqual(accountTheme);
+  });
+
+  it('replaces remembered colors with defaults for a ready account without a custom theme', async () => {
+    localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify(rememberedTheme));
+    store = { ...store, authReady: false, authenticated: false, editable: false };
+    await render();
+    expectAppearance(rememberedTheme);
+    expectLocked();
+
+    store = accountStore();
+    delete store.data.theme;
+    await render();
+    expectAppearance(DEFAULT_THEME);
+    expect(container.querySelector('h1')?.textContent).toBe('Дневник питания');
+    expect(JSON.parse(localStorage.getItem(THEME_STORAGE_KEY)!)).toEqual(DEFAULT_THEME);
   });
 });
 
