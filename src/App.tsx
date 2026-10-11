@@ -30,6 +30,7 @@ import {
 import { isAppData, useAppData } from "./useAppData";
 import { FoodIcon } from "./FoodIcon";
 import { ProductCard } from "./ProductCard";
+import { MacroRing, macroComposition } from "./MacroRing";
 import { ActivityForm, ActivityIcon } from "./ActivityForm";
 import { ACTIVITY_KINDS, activityDefinition, isStepActivity } from "./activity";
 import { ThemeSettings } from "./ThemeSettings";
@@ -201,40 +202,20 @@ function Modal({
   );
 }
 
-function Ring({ value, total }: { value: number; total: number }) {
-  const filled = percent(value, total);
-  return (
-    <div className="calorie-ring">
-      <svg viewBox="0 0 220 220" aria-hidden="true">
-        <circle cx="110" cy="110" r="94" className="ring-track" />
-        <circle
-          cx="110"
-          cy="110"
-          r="94"
-          className={`ring-value ${value > total && total > 0 ? "over" : ""}`}
-          strokeDasharray={`${filled * 5.906} 590.6`}
-        />
-      </svg>
-      <div className="ring-label">
-        <Flame size={21} />
-        <strong>{number(value)}</strong>
-        <span>ккал съедено</span>
-      </div>
-    </div>
-  );
-}
-
 function Macro({
   label,
   value,
   goal,
   color,
+  share,
 }: {
   label: string;
   value: number;
   goal: number;
   color: string;
+  share: number;
 }) {
+  const filled = goal > 0 ? percent(value, goal) : share;
   return (
     <div className="macro">
       <div>
@@ -243,12 +224,12 @@ function Macro({
           {label}
         </span>
         <strong>
-          {number(value)} <small>/ {goal || "—"} г</small>
+          {number(value, 1)}{goal > 0 ? <small> / {goal} г</small> : <> г <small>· {number(share, 1)}%</small></>}
         </strong>
       </div>
-      <div className="track">
+      <div className="track" role="meter" aria-label={`${label}: ${goal > 0 ? "доля дневной цели" : "доля энергии БЖУ"}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={filled} aria-valuetext={goal > 0 ? `${number(value, 1)} из ${goal} г` : `${number(share, 1)}% энергии БЖУ`}>
         <span
-          style={{ width: `${percent(value, goal)}%`, background: color }}
+          style={{ width: `${filled}%`, background: color }}
         />
       </div>
     </div>
@@ -342,6 +323,7 @@ export function Diary({ store }: { store: ReturnType<typeof useAppData> }) {
   const nutrients = sumNutrients(
     data.food.filter((e) => e.date === date).map((e) => e.nutrients),
   );
+  const composition = macroComposition(nutrients);
   const walks = data.walks.filter((e) => e.date === date);
   const sleep = data.sleep.filter((e) => e.date === date);
   const totalSteps = walks.filter(w => isStepActivity(w.kind)).reduce((sum, w) => sum + w.steps, 0);
@@ -646,7 +628,7 @@ export function Diary({ store }: { store: ReturnType<typeof useAppData> }) {
                     </div>
                     <div className="nutrition-content">
                       <div className="ring-column">
-                        <Ring value={nutrients.kcal} total={target} />
+                        <MacroRing nutrients={nutrients} />
                         <div className="calorie-remaining">
                           {target ? (
                             <>
@@ -680,21 +662,24 @@ export function Diary({ store }: { store: ReturnType<typeof useAppData> }) {
                           value={nutrients.protein}
                           goal={hasProfile ? profile.protein : 0}
                           color="var(--protein)"
+                          share={composition[0].share}
                         />
                         <Macro
                           label="Жиры"
                           value={nutrients.fat}
                           goal={hasProfile ? profile.fat : 0}
                           color="var(--fat)"
+                          share={composition[1].share}
                         />
                         <Macro
                           label="Углеводы"
                           value={nutrients.carbs}
                           goal={hasProfile ? profile.carbs : 0}
                           color="var(--carbs)"
+                          share={composition[2].share}
                         />
                         <p className="mini-note">
-                          БЖУ указаны в граммах.
+                          БЖУ — в граммах. {hasProfile ? "Круг — доли энергии из БЖУ, полосы — прогресс к дневной цели." : "Круг и полосы — доли энергии из БЖУ."}
                         </p>
                       </div>
                     </div>

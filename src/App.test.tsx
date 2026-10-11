@@ -79,6 +79,28 @@ afterEach(async () => {
 });
 
 describe('App authentication boundary', () => {
+  it('shows macro composition without a configured calorie target and keeps it when a target is added', async () => {
+    store.data.profile.configured = false;
+    store.data.food[0].nutrients = { kcal: 403, protein: 14, fat: 7, carbs: 65, fiber: 0 };
+    await render();
+    const segments = () => [...container.querySelectorAll('.macro-ring-segment')].map(segment => ({
+      macro: segment.getAttribute('data-macro'), dash: segment.getAttribute('stroke-dasharray'),
+    }));
+    expect(segments().map(segment => segment.macro)).toEqual(['protein', 'fat', 'carbs']);
+    const before = segments();
+    expect(container.querySelector('.ring-label strong')?.textContent).toBe('403');
+    const meters = [...container.querySelectorAll<HTMLElement>('.macro [role="meter"]')];
+    expect(meters).toHaveLength(3);
+    expect(meters.map(meter => Number(meter.getAttribute('aria-valuenow')))).toEqual(expect.arrayContaining([
+      expect.closeTo(56 / 379 * 100), expect.closeTo(63 / 379 * 100), expect.closeTo(260 / 379 * 100),
+    ]));
+    for (const meter of meters) expect(meter.getAttribute('aria-label')).toContain('доля энергии БЖУ');
+    store.data.profile.configured = true;
+    await render();
+    expect(segments()).toEqual(before);
+    for (const meter of container.querySelectorAll('.macro [role="meter"]')) expect(meter.getAttribute('aria-label')).toContain('доля дневной цели');
+  });
+
   it('does not expose an existing diary while the session is being checked', async () => {
     store.authReady = false;
     await render();
