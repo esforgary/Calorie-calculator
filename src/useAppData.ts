@@ -67,7 +67,7 @@ const themePresets = (value: unknown) => {
 export function isAppData(value: unknown): value is AppData {
   if (!record(value) || value.version !== 1 || !record(value.profile) || !record(value.water)) return false;
   const p = value.profile;
-  return text(p.name) && ['female', 'male'].includes(String(p.sex)) && ['lose', 'maintain'].includes(String(p.goal))
+  return text(p.name) && ['female', 'male'].includes(String(p.sex)) && ['lose', 'lose_fast', 'maintain'].includes(String(p.goal))
     && (value.theme === undefined || themeColors(value.theme)) && themePresets(value.themePresets)
     && typeof p.configured === 'boolean'
     && ['age', 'height', 'weight', 'targetWeight', 'activity', 'stepsGoal', 'stride'].every(key => finite(p[key]))

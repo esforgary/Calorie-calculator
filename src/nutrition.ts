@@ -95,11 +95,15 @@ export function calculateProfile(profile: Profile) {
     ),
   );
   const tdee = Math.round(bmr * Math.max(1, activity));
-  // A 10% reduction and a floor at estimated BMR are conservative product settings.
+  // These are product settings, not a prescribed intake or promised rate of weight loss.
+  // Both loss modes keep the existing floor at estimated resting expenditure.
   // Sleep and logged walking do not add an allowance to this activity-adjusted target.
   const canLose =
-    profile.goal === "lose" && bmi >= 18.5 && age >= 20 && age <= 78;
-  const target = canLose ? Math.max(bmr, Math.round(tdee * 0.9)) : tdee;
+    (profile.goal === "lose" || profile.goal === "lose_fast") && bmi >= 18.5 && age >= 20 && age <= 78;
+  const lossTarget = profile.goal === "lose_fast"
+    ? tdee - Math.min(750, Math.round(tdee * 0.3))
+    : Math.round(tdee * 0.9);
+  const target = canLose ? Math.max(bmr, lossTarget) : tdee;
   return {
     bmi,
     bmiLabel,

@@ -42,6 +42,44 @@ describe("calendar and sleep", () => {
 });
 
 describe("profile estimates", () => {
+  const fastProfile = { ...DEFAULT_PROFILE, sex: "male" as const, age: 24, height: 173, weight: 85, targetWeight: 75, activity: 1.375, goal: "lose_fast" as const };
+
+  it("calculates about 1800 kcal for the requested fast-loss profile and scales macro goals", () => {
+    const result = calculateProfile(fastProfile);
+    expect(result.bmr).toBe(1816);
+    expect(result.tdee).toBe(2497);
+    expect(result.target).toBe(1816);
+    expect(result.deficit).toBe(681);
+    expect([result.protein, result.fat, result.carbs]).toEqual([114, 61, 204]);
+    expect(calculateProfile({ ...fastProfile, goal: "lose" }).target).toBe(2247);
+    expect(calculateProfile({ ...fastProfile, goal: "maintain" }).target).toBe(2497);
+  });
+
+  it("recalculates fast loss as activity or body weight changes and caps its deficit", () => {
+    const active = calculateProfile({ ...fastProfile, activity: 1.725 });
+    expect(active.tdee).toBe(3133);
+    expect(active.target).toBe(2383);
+    expect(active.deficit).toBe(750);
+    expect(calculateProfile({ ...fastProfile, weight: 75 }).target).not.toBe(1816);
+    for (const activity of [1, 1.2, 1.375, 1.55, 1.725]) {
+      const result = calculateProfile({ ...fastProfile, activity });
+      expect(result.target).toBeGreaterThanOrEqual(result.bmr);
+      expect(result.deficit).toBeLessThanOrEqual(750);
+      expect(result.deficit).toBeLessThanOrEqual(Math.round(result.tdee * 0.3));
+      expect(result.deficit).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it("keeps the no-deficit and invalid-input guards for fast loss", () => {
+    for (const change of [{ weight: 45 }, { age: 19 }, { age: 79 }]) {
+      const result = calculateProfile({ ...fastProfile, ...change });
+      expect(result.deficit).toBe(0);
+      expect(result.target).toBe(result.tdee);
+    }
+    expect(calculateProfile({ ...fastProfile, weight: NaN }).target).toBe(0);
+    expect(calculateProfile({ ...fastProfile, activity: 0 }).target).toBe(0);
+  });
+
   it("uses Mifflin–St Jeor and the requested energy shares", () => {
     const result = calculateProfile(DEFAULT_PROFILE);
     expect(result.bmi).toBeCloseTo(24.977, 3);

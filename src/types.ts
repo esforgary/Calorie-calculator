@@ -80,7 +80,7 @@ export interface Profile {
   weight: number;
   targetWeight: number;
   activity: number;
-  goal: "lose" | "maintain";
+  goal: "lose" | "lose_fast" | "maintain";
   stepsGoal: number;
   stride: number;
   configured: boolean;

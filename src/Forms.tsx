@@ -930,6 +930,7 @@ export function ProfileForm({
     configured: true,
   };
   const estimate = calculateProfile(nextProfile);
+  const isWeightLoss = goal === "lose" || goal === "lose_fast";
   const setValue = (key: keyof typeof values, value: string) =>
     setValues((current) => ({ ...current, [key]: value }));
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -942,13 +943,13 @@ export function ProfileForm({
     if (!inRange(values.targetWeight, 30, 350))
       return setError("Укажите целевой вес от 30 до 350 кг.");
     if (
-      goal === "lose" &&
+      isWeightLoss &&
       nextProfile.targetWeight / (nextProfile.height / 100) ** 2 < 18.5
     )
       return setError(
         "Для снижения веса целевой ИМТ должен быть не ниже 18,5. Выберите другую цель или поддержание веса.",
       );
-    if (goal === "lose" && nextProfile.targetWeight >= nextProfile.weight)
+    if (isWeightLoss && nextProfile.targetWeight >= nextProfile.weight)
       return setError(
         "Целевой вес для снижения должен быть меньше текущего. Для сохранения веса выберите «Поддержание».",
       );
@@ -1010,11 +1011,13 @@ export function ProfileForm({
         <Field label="Цель">
           <CustomSelect
             aria-label="Цель"
+            aria-describedby={goal === "lose_fast" ? "profile-fast-goal-help" : undefined}
             className="input"
             value={goal}
             onValueChange={(value) => setGoal(value as Profile["goal"])}
           >
             <option value="lose">Плавное снижение веса</option>
+            <option value="lose_fast">Быстрое похудение</option>
             <option value="maintain">Поддержание веса</option>
           </CustomSelect>
         </Field>
@@ -1026,6 +1029,9 @@ export function ProfileForm({
           max={350}
         />
       </div>
+        {goal === "lose_fast" && (
+          <p className="helper" id="profile-fast-goal-help">Дефицит до 30%, максимум 750 ккал в сутки, без снижения лимита ниже оценки расхода в покое. Скорость снижения веса индивидуальна.</p>
+        )}
         <Field label="Повседневная активность">
           <CustomSelect aria-label="Повседневная активность" value={values.activity} onValueChange={(value) => setValue("activity", value)}>
             <option value="1.2">Низкая — преимущественно сидячий день</option>
@@ -1067,7 +1073,7 @@ export function ProfileForm({
       )}
       <details className="profile-method">
         <summary>Как рассчитывается цель</summary>
-        <p className="helper">Расчёт учитывает возраст, пол, рост, вес и обычную активность. Для снижения веса применяется умеренный дефицит калорий; при ИМТ ниже 18,5 он отключается. Расход тренировок и сна не прибавляется к лимиту питания.</p>
+        <p className="helper">Расчёт учитывает возраст, пол, рост, вес и обычную активность. Для плавного снижения веса применяется дефицит 10%, для быстрого — до 30%, максимум 750 ккал в сутки. В обоих режимах лимит не опускается ниже оценки расхода в покое; при ИМТ ниже 18,5 дефицит отключается. Расход тренировок и сна не прибавляется к лимиту питания.</p>
         <p className="helper">Модель приблизительная: для взрослых 20–78 лет вне беременности и грудного вскармливания. ИМТ — ориентир, а не диагноз; цель шагов — личный ориентир движения.</p>
       </details>
       <ErrorMessage message={error} />

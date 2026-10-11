@@ -3,9 +3,9 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import type { Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { FoodForm, ProductForm, SleepForm } from "./Forms";
+import { FoodForm, ProductForm, ProfileForm, SleepForm } from "./Forms";
 import { createInitialData } from "./seed";
-import type { FoodEntry, Product, SleepEntry } from "./types";
+import type { FoodEntry, Product, Profile, SleepEntry } from "./types";
 
 let root: Root;
 let container: HTMLDivElement;
@@ -38,6 +38,76 @@ async function clickText(text: string) {
 async function submitForm() {
   await act(async () => container.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
 }
+async function selectOption(label: string, optionText: string) {
+  const trigger = container.querySelector<HTMLButtonElement>(`[role="combobox"][aria-label="${label}"]`)!;
+  expect(trigger, label).toBeTruthy();
+  await act(async () => trigger.click());
+  const option = [...document.querySelectorAll<HTMLElement>('[role="listbox"][data-state="open"] [role="option"]')].find(item => item.textContent === optionText);
+  expect(option, optionText).toBeTruthy();
+  await act(async () => option!.click());
+}
+
+describe('Profile weight-loss goals', () => {
+  const profile: Profile = {
+    ...createInitialData().profile,
+    configured: true, age: 24, sex: 'male', height: 173, weight: 85,
+    targetWeight: 70, activity: 1.375, goal: 'lose',
+  };
+  const previewCalories = () => container.querySelector('.profile-estimate strong')?.textContent?.replace(/\s/g, '');
+
+  it('selects fast weight loss through CustomSelect, previews 1816 kcal and saves the selected goal', async () => {
+    const save = vi.fn<(value: Profile) => void>();
+    await act(async () => root.render(<ProfileForm profile={profile} onSave={save} />));
+    expect(previewCalories()).toBe('2247ккал');
+    const goal = container.querySelector<HTMLButtonElement>('[role="combobox"][aria-label="Цель"]')!;
+    await act(async () => goal.click());
+    const options = [...document.querySelectorAll<HTMLElement>('[role="listbox"][data-state="open"] [role="option"]')];
+    expect(options.map(option => option.textContent)).toEqual(['Плавное снижение веса', 'Быстрое похудение', 'Поддержание веса']);
+    await act(async () => options[1].click());
+    expect(goal.textContent).toBe('Быстрое похудение');
+    expect(previewCalories()).toBe('1816ккал');
+    const helper = document.getElementById(goal.getAttribute('aria-describedby')!);
+    expect(helper?.textContent).toContain('Дефицит до 30%, максимум 750 ккал в сутки');
+    expect(helper?.textContent).toContain('Скорость снижения веса индивидуальна');
+    await submitForm();
+    expect(save).toHaveBeenCalledExactlyOnceWith({ ...profile, goal: 'lose_fast' });
+  });
+
+  it('recalculates the fast preview when activity or body parameters change and can return to maintenance', async () => {
+    await act(async () => root.render(<ProfileForm profile={{ ...profile, goal: 'lose_fast' }} onSave={() => {}} />));
+    await selectOption('Повседневная активность', 'Средняя — регулярная активность');
+    expect(previewCalories()).toBe('2065ккал');
+    await changeInput('Текущий вес, кг', '80');
+    expect(previewCalories()).toBe('1987ккал');
+    await changeInput('Возраст, лет', '25');
+    expect(previewCalories()).toBe('1980ккал');
+    await changeInput('Рост, см', '180');
+    expect(previewCalories()).toBe('2048ккал');
+    await selectOption('Пол для расчёта обмена', 'Женский');
+    expect(previewCalories()).toBe('1790ккал');
+    await selectOption('Цель', 'Поддержание веса');
+    expect(previewCalories()).toBe('2540ккал');
+    expect(container.querySelector('#profile-fast-goal-help')).toBeNull();
+  });
+
+  it.each(['lose', 'lose_fast'] as const)('requires a lower target weight and target BMI of at least 18.5 for %s', async goal => {
+    const save = vi.fn<(value: Profile) => void>();
+    await act(async () => root.render(<ProfileForm profile={{ ...profile, goal }} onSave={save} />));
+    for (const target of ['85', '86']) {
+      await changeInput('Целевой вес, кг', target);
+      await submitForm();
+      expect(save).not.toHaveBeenCalled();
+      expect(container.querySelector('[role="alert"]')?.textContent).toContain('должен быть меньше текущего');
+    }
+    await changeInput('Целевой вес, кг', '55');
+    await submitForm();
+    expect(save).not.toHaveBeenCalled();
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('целевой ИМТ должен быть не ниже 18,5');
+    await changeInput('Целевой вес, кг', '70');
+    await submitForm();
+    expect(save).toHaveBeenCalledExactlyOnceWith({ ...profile, goal });
+  });
+});
 
 describe('Product portions', () => {
   it('previews a 40g serving and a piece, converts input basis and saves canonical values', async () => {

@@ -276,6 +276,33 @@ describe('useAppData lifecycle and ownership', () => {
     expect(JSON.parse(localStorage.getItem(userKey('alice'))!).data.profile.name).toBe('Восстановленный');
   });
 
+  it('saves the fast weight-loss goal locally and to the cloud, then restores it after remount', async () => {
+    fake.state.session = account('alice');
+    let remote = named('Алиса');
+    let revision = 2;
+    fake.state.respond = async request => {
+      if (request.operation === 'select') return row(remote, revision);
+      remote = JSON.parse(JSON.stringify(request.payload));
+      revision += 1;
+      return { data: { revision, updated_at: '2026-10-11T10:00:00Z' }, error: null };
+    };
+    await mount();
+    await act(async () => {
+      view.setData(current => ({ ...current, profile: { ...current.profile, goal: 'lose_fast' } }));
+    });
+    const saved = JSON.parse(localStorage.getItem(userKey('alice'))!).data;
+    expect(saved.profile.goal).toBe('lose_fast');
+    expect(isAppData(saved)).toBe(true);
+    await debounce();
+    expect(fake.state.requests.find(request => request.operation === 'update')?.payload).toEqual(saved);
+    expect(view.syncStatus).toBe('В облаке');
+    await act(async () => { root.unmount(); });
+    newRoot();
+    await mount();
+    expect(view.data.profile.goal).toBe('lose_fast');
+    expect(view.editable).toBe(true);
+  });
+
   it('preserves malformed source when storage cannot hold its backup', async () => {
     fake.state.session = account('alice');
     localStorage.setItem(userKey('alice'), '{broken JSON');
@@ -381,6 +408,19 @@ describe('useAppData lifecycle and ownership', () => {
     const imported = JSON.parse(JSON.stringify({ ...legacy, themePresets: presets }));
     expect(isAppData(imported)).toBe(true);
     expect(imported.themePresets).toEqual(presets);
+  });
+
+  it('accepts existing and fast weight-loss goals through version-1 JSON without accepting unknown goals', () => {
+    const data = createInitialData();
+    for (const goal of ['lose', 'maintain', 'lose_fast']) {
+      const imported = JSON.parse(JSON.stringify({ ...data, profile: { ...data.profile, goal } }));
+      expect(isAppData(imported)).toBe(true);
+      expect(imported.profile.goal).toBe(goal);
+      expect(imported.version).toBe(1);
+    }
+    for (const goal of ['fast', 'gain', '', null, undefined, 30]) {
+      expect(isAppData({ ...data, profile: { ...data.profile, goal } })).toBe(false);
+    }
   });
 
   it('rejects malformed theme preset collections, identifiers and names', () => {
