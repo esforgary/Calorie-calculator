@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import type { User } from '@supabase/supabase-js';
+import type { Session, User } from '@supabase/supabase-js';
 import type { AppData } from './types';
 import { createInitialData } from './seed';
-import { configured, supabase, supabaseConfigurationError } from './supabase';
+import { configured, sessionPolicy, supabase, supabaseConfigurationError } from './supabase';
+import { REMEMBER_SESSION_KEY } from './authSession';
+import { isFoodIconCategory } from './foodCategories';
 
 interface Cache {
   cacheVersion: 1;
@@ -37,6 +39,7 @@ const text = (value: unknown): value is string => typeof value === 'string';
 const image = (value: unknown) => value === undefined || (text(value) && value.length <= 480000
   && /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(value));
 const nutrients = (value: unknown) => record(value) && ['kcal', 'protein', 'fat', 'carbs', 'fiber'].every(key => finite(value[key]) && value[key] >= 0);
+const category = (value: unknown) => value === undefined || isFoodIconCategory(value);
 const listOf = (value: unknown, check: (item: Record<string, unknown>) => boolean) => Array.isArray(value) && value.every(item => record(item) && check(item));
 
 /** Validate storage/imported JSON before the interface performs calculations on it. */
@@ -48,11 +51,11 @@ export function isAppData(value: unknown): value is AppData {
     && ['age', 'height', 'weight', 'targetWeight', 'activity', 'stepsGoal', 'stride'].every(key => finite(p[key]))
     && Object.values(value.water).every(amount => finite(amount) && amount >= 0)
     && listOf(value.products, item => text(item.id) && text(item.name) && text(item.category) && text(item.emoji) && nutrients(item)
-      && image(item.image) && (item.note === undefined || text(item.note)))
+      && image(item.image) && category(item.iconCategory) && (item.note === undefined || text(item.note)))
     && listOf(value.recipes, item => text(item.id) && text(item.name) && text(item.emoji) && finite(item.servings) && item.servings > 0
-      && finite(item.cookedWeight) && item.cookedWeight >= 0 && listOf(item.ingredients, ingredient => text(ingredient.productId) && finite(ingredient.grams) && ingredient.grams >= 0))
+      && finite(item.cookedWeight) && item.cookedWeight >= 0 && category(item.iconCategory) && listOf(item.ingredients, ingredient => text(ingredient.productId) && finite(ingredient.grams) && ingredient.grams >= 0))
     && listOf(value.food, item => text(item.id) && text(item.name) && text(item.date) && text(item.emoji) && finite(item.grams) && item.grams >= 0
-      && ['breakfast', 'lunch', 'dinner', 'snack'].includes(String(item.meal)) && nutrients(item.nutrients) && image(item.image)
+      && ['breakfast', 'lunch', 'dinner', 'snack'].includes(String(item.meal)) && nutrients(item.nutrients) && image(item.image) && category(item.iconCategory)
       && (item.productId === undefined || text(item.productId)))
     && listOf(value.walks, item => text(item.id) && text(item.date) && text(item.time) && ['easy', 'moderate', 'brisk'].includes(String(item.pace))
       && ['minutes', 'steps', 'distance', 'weight'].every(key => finite(item[key]) && item[key] >= 0))
@@ -65,7 +68,7 @@ function loadCache(owner: string | null): { diary: ActiveDiary; error: string | 
   let raw: string | null = null;
   let damagedSource: string | null = null;
   try {
-    raw = window.localStorage.getItem(keyFor(owner));
+    raw = owner ? window.localStorage.getItem(keyFor(owner)) : null;
   } catch {
     error = 'Хранилище браузера недоступно. Для сохранности данных используйте экспорт.';
   }
@@ -86,7 +89,7 @@ function loadCache(owner: string | null): { diary: ActiveDiary; error: string | 
   return {
     diary: {
       ...(cached ?? { cacheVersion: 1, data: createInitialData(), revision: null, dirty: false, updatedAt: null }),
-      owner, hydrated: !owner, loading: false, editable: !owner, cached: Boolean(cached), conflicted: false,
+      owner, hydrated: false, loading: false, editable: false, cached: Boolean(cached), conflicted: false,
       savedLocally: Boolean(cached), sequence: 0, controller: new AbortController(),
       damagedSource, damagedBackupKey: `${keyFor(owner)}:corrupt-backup:${Date.now()}`,
       recoveryBlocked: false,
@@ -134,8 +137,9 @@ export function useAppData() {
   const [data, setDataState] = useState(initial.diary.data);
   const [user, setUser] = useState<Account>(null);
   const [authReady, setAuthReady] = useState(!configured);
-  const [canEdit, setCanEdit] = useState(!configured);
+  const [canEdit, setCanEdit] = useState(false);
   const [authPending, setAuthPending] = useState(false);
+  const [sessionExpiresAt, setSessionExpiresAt] = useState<number | null>(null);
   const [syncStatus, setSyncStatus] = useState(configured ? 'Подключение…' : 'На устройстве');
   const [error, setError] = useState<string | null>(supabaseConfigurationError ?? initial.error);
   const [conflict, setConflict] = useState(false);
@@ -146,6 +150,10 @@ export function useAppData() {
   const inFlight = useRef<Promise<void> | null>(null);
   const authBusy = useRef(false);
   const initialized = useRef(!configured);
+  const authorized = useRef<() => boolean>(() => false);
+  const lockAccount = useRef<() => void>(() => {});
+  const revocationInFlight = useRef<Promise<unknown> | null>(null);
+  const unsavedAccounts = useRef(new Map<string, ActiveDiary>());
 
   const schedule = useCallback(() => {
     clearTimeout(timer.current);
@@ -154,7 +162,7 @@ export function useAppData() {
 
   const setData: Dispatch<SetStateAction<AppData>> = useCallback(update => {
     const diary = active.current;
-    if (!initialized.current || authBusy.current || diary.loading || !diary.editable) {
+    if (!authorized.current() || !diary.owner || !initialized.current || authBusy.current || diary.loading || !diary.editable) {
       setError('Дождитесь загрузки дневника или повторите подключение к облаку.');
       return;
     }
@@ -176,7 +184,10 @@ export function useAppData() {
     const client = supabase;
     let disposed = false;
     let identity: string | null | undefined;
-    const current = (diary: ActiveDiary) => !disposed && active.current === diary && !diary.controller.signal.aborted;
+    let currentSession: Session | null = null;
+    let expiryTimer: ReturnType<typeof setTimeout> | undefined;
+    let rejectedToken: string | null = null;
+    const current = (diary: ActiveDiary) => !disposed && active.current === diary && !diary.controller.signal.aborted && authorized.current();
     const markConflict = (diary: ActiveDiary) => {
       diary.conflicted = true;
       diary.hydrated = true;
@@ -289,12 +300,20 @@ export function useAppData() {
       if (identity === id) { setUser(account ? { id: account.id, email: account.email } : null); return; }
       identity = id;
       clearTimeout(timer.current);
+      if (active.current.owner && !active.current.savedLocally && active.current.sequence > 0) {
+        unsavedAccounts.current.set(active.current.owner, active.current);
+      }
       active.current.controller.abort();
       inFlight.current = null;
       initialized.current = false;
       setCanEdit(false);
       setAuthReady(false);
-      const loaded = loadCache(id);
+      const pending = id ? unsavedAccounts.current.get(id) : undefined;
+      const loaded = pending ? {
+        diary: { ...pending, hydrated: false, loading: false, editable: false, controller: new AbortController() },
+        error: 'Восстановлены правки из открытой вкладки. Сохраните резервную копию дневника.',
+      } : loadCache(id);
+      if (id) unsavedAccounts.current.delete(id);
       active.current = loaded.diary;
       setDataState(loaded.diary.data);
       setUser(account ? { id: account.id, email: account.email } : null);
@@ -303,41 +322,98 @@ export function useAppData() {
       if (account) { void hydrate(); }
       else {
         initialized.current = true;
-        setCanEdit(true);
+        setCanEdit(false);
         setAuthReady(true);
-        setSyncStatus('На устройстве');
+        setSyncStatus('Нужен вход');
       }
     };
+
+    const lock = () => {
+      clearTimeout(expiryTimer);
+      const previous = currentSession;
+      currentSession = null;
+      if (previous) sessionPolicy.revoke(previous);
+      setSessionExpiresAt(null);
+      changeAccount(null);
+    };
+    const reject = (session: Session, reason: string) => {
+      lock();
+      setError(reason === 'expired' ? 'Прошло 30 дней после входа. Войдите снова.' : 'Войдите в аккаунт, чтобы открыть дневник.');
+      if (rejectedToken === session.access_token) return;
+      rejectedToken = session.access_token;
+      // Lock immediately even offline. The remembered revocation prevents restoring this token after reload.
+      sessionPolicy.revoke(session);
+      const revoke = client.auth.signOut({ scope: 'local' }).catch(() => {});
+      revocationInFlight.current = revoke;
+      void revoke.finally(() => { if (revocationInFlight.current === revoke) revocationInFlight.current = null; });
+    };
+    const verify = () => {
+      if (disposed || !currentSession) return false;
+      const checked = sessionPolicy.check(currentSession);
+      if (!checked.valid) { reject(currentSession, checked.reason); return false; }
+      return true;
+    };
+    const armExpiry = () => {
+      clearTimeout(expiryTimer);
+      if (!verify() || !currentSession) return;
+      const checked = sessionPolicy.check(currentSession);
+      if (checked.valid) expiryTimer = setTimeout(armExpiry, Math.min(checked.expiresAt - Date.now(), 24 * 60 * 60 * 1000));
+    };
+    const changeSession = (session: Session | null) => {
+      if (disposed) return;
+      if (!session) { lock(); return; }
+      const checked = sessionPolicy.check(session);
+      if (!checked.valid) { reject(session, checked.reason); return; }
+      rejectedToken = null;
+      currentSession = session;
+      setSessionExpiresAt(checked.expiresAt);
+      changeAccount(session.user);
+      armExpiry();
+    };
+    authorized.current = verify;
+    lockAccount.current = lock;
 
     saveAction.current = save;
     loadAction.current = hydrate;
     const { data: subscription } = client.auth.onAuthStateChange((_event, session) => {
       // Supabase callbacks must return before another auth/database request starts.
-      queueMicrotask(() => changeAccount(session?.user ?? null));
+      queueMicrotask(() => changeSession(session));
     });
     void client.auth.getSession().then(({ data: sessionData, error: sessionError }) => {
       if (disposed) return;
       if (sessionError) { setError(errorText(sessionError)); setAuthReady(true); return; }
-      if (identity === undefined) changeAccount(sessionData.session?.user ?? null);
+      if (identity === undefined) changeSession(sessionData.session);
     }).catch(cause => { if (!disposed) { setError(errorText(cause)); setAuthReady(true); } });
     const reconnect = () => {
-      if (active.current.owner && !active.current.conflicted && !authBusy.current) {
+      if (verify() && active.current.owner && !active.current.conflicted && !authBusy.current) {
         if (active.current.hydrated) void save(); else void hydrate();
       }
     };
+    const sessionStorageChanged = (event: StorageEvent) => {
+      if (event.key === null || event.key.startsWith(REMEMBER_SESSION_KEY)) armExpiry();
+    };
     window.addEventListener('online', reconnect);
+    window.addEventListener('focus', armExpiry);
+    window.addEventListener('storage', sessionStorageChanged);
+    document.addEventListener('visibilitychange', armExpiry);
     return () => {
       disposed = true;
       clearTimeout(timer.current);
+      clearTimeout(expiryTimer);
       active.current.controller.abort();
       subscription.subscription.unsubscribe();
       window.removeEventListener('online', reconnect);
+      window.removeEventListener('focus', armExpiry);
+      window.removeEventListener('storage', sessionStorageChanged);
+      document.removeEventListener('visibilitychange', armExpiry);
     };
   }, [schedule]);
 
   useEffect(() => {
     const warnUnsaved = (event: BeforeUnloadEvent) => {
-      if (!active.current.savedLocally && active.current.sequence > 0) { event.preventDefault(); event.returnValue = ''; }
+      if ((!active.current.savedLocally && active.current.sequence > 0) || unsavedAccounts.current.size > 0) {
+        event.preventDefault(); event.returnValue = '';
+      }
     };
     window.addEventListener('beforeunload', warnUnsaved);
     return () => window.removeEventListener('beforeunload', warnUnsaved);
@@ -351,6 +427,7 @@ export function useAppData() {
     authBusy.current = true;
     setAuthPending(true);
     try {
+      if (revocationInFlight.current) await revocationInFlight.current;
       const result = await supabase.auth.signInWithPassword({ email: email.trim(), password });
       if (result.error) throw new Error(errorText(result.error));
     } finally { authBusy.current = false; setAuthPending(false); }
@@ -364,6 +441,7 @@ export function useAppData() {
     authBusy.current = true;
     setAuthPending(true);
     try {
+      if (revocationInFlight.current) await revocationInFlight.current;
       const result = await supabase.auth.signUp({
         email: email.trim(), password,
         options: { emailRedirectTo: new URL(window.location.pathname, window.location.origin).href },
@@ -380,21 +458,21 @@ export function useAppData() {
     setAuthPending(true);
     clearTimeout(timer.current);
     try {
-      await saveAction.current();
-      if (inFlight.current) await inFlight.current;
-      clearTimeout(timer.current);
       if (active.current.dirty && !active.current.savedLocally) throw new Error('Правки не сохранены. Экспортируйте дневник перед выходом.');
+      // Every edit is already cached under its account. Hide and abort immediately;
+      // remaining local edits are synchronized on the next login to this account.
+      lockAccount.current();
       const result = await supabase.auth.signOut({ scope: 'local' });
       if (result.error) throw new Error(errorText(result.error));
     } finally { authBusy.current = false; setAuthPending(false); }
   }, []);
 
   const retrySync = useCallback(() => {
-    if (authBusy.current) return;
-    if (!active.current.owner) {
-      setError(storeCache(active.current) ?? supabaseConfigurationError);
+    if (authBusy.current || !authorized.current() || !active.current.owner) return;
+    if (active.current.recoveryBlocked) {
+      setError(storeCache(active.current));
       setCanEdit(active.current.editable);
-      return;
+      if (active.current.recoveryBlocked) return;
     }
     if (!active.current.hydrated || active.current.conflicted) void loadAction.current();
     else void saveAction.current();
@@ -404,5 +482,5 @@ export function useAppData() {
     await loadAction.current(true);
   }, []);
 
-  return { data, setData, user, authReady, editable: canEdit && authReady && !authPending, configured, syncStatus, error, signIn, signUp, signOut, retrySync, conflict, useCloudVersion };
+  return { data, setData, user, authReady, authPending, authenticated: Boolean(user), sessionExpiresAt, editable: Boolean(user) && canEdit && authReady && !authPending, configured, syncStatus, error, signIn, signUp, signOut, retrySync, conflict, useCloudVersion };
 }

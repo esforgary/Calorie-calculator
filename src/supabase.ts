@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { createSessionPolicy } from './authSession';
 
 const url = import.meta.env.VITE_SUPABASE_URL?.trim() ?? "";
 const key = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim() ?? "";
@@ -76,3 +77,4 @@ if (url || key) {
 export const supabase = client;
 export const configured = Boolean(client);
 export const supabaseConfigurationError = configurationError;
+export const sessionPolicy = createSessionPolicy(authStorage);

@@ -1,4 +1,5 @@
 import type { AppData, Product, Profile } from "./types";
+import { foodCategoryLabel, resolveFoodCategory } from "./foodCategories";
 
 export const DEFAULT_PROFILE: Profile = {
   name: "",
@@ -209,7 +210,10 @@ export function createInitialData(): AppData {
   return {
     version: 1,
     profile: { ...DEFAULT_PROFILE },
-    products: PRODUCTS.map((product) => ({ ...product })),
+    products: PRODUCTS.map((product) => {
+      const iconCategory = resolveFoodCategory(product);
+      return { ...product, iconCategory, category: foodCategoryLabel(iconCategory) };
+    }),
     recipes: [],
     food: [],
     walks: [],

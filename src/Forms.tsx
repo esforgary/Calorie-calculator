@@ -3,6 +3,7 @@ import type { FormEvent, ReactNode } from "react";
 import { Camera, Plus, Trash2 } from "lucide-react";
 import type {
   FoodEntry,
+  FoodIconCategory,
   Ingredient,
   MealType,
   Nutrients,
@@ -21,14 +22,9 @@ import {
   sleepHours,
   walkStats,
 } from "./nutrition";
+import { FoodIcon } from "./FoodIcon";
+import { PRODUCT_CATEGORIES, RECIPE_CATEGORIES, foodCategoryLabel, resolveFoodCategory } from "./foodCategories";
 
-const categories = [
-  "Крупы",
-  "Белковые",
-  "Овощи и фрукты",
-  "Молочные",
-  "Другое",
-];
 const mealNames: Record<MealType, string> = {
   breakfast: "Завтрак",
   lunch: "Обед",
@@ -101,6 +97,32 @@ function ErrorMessage({ message }: { message: string }) {
       {message}
     </p>
   ) : null;
+}
+
+function CategoryPicker({ value, onChange, options }: {
+  value: FoodIconCategory;
+  onChange: (value: FoodIconCategory) => void;
+  options: { id: FoodIconCategory; label: string }[];
+}) {
+  return (
+    <fieldset className="food-category-picker">
+      <legend>Категория</legend>
+      <div className="food-category-grid">
+        {options.map(({ id, label }) => (
+          <button
+            key={id}
+            type="button"
+            className={`food-category-option${value === id ? " selected" : ""}`}
+            aria-pressed={value === id}
+            onClick={() => onChange(id)}
+          >
+            <FoodIcon food={{ iconCategory: id }} size={40} />
+            <span>{label}</span>
+          </button>
+        ))}
+      </div>
+    </fieldset>
+  );
 }
 
 function Actions({
@@ -216,8 +238,7 @@ export function ProductForm({
   onCancel: () => void;
 }) {
   const [name, setName] = useState(initial?.name ?? "");
-  const [category, setCategory] = useState(initial?.category ?? "Другое");
-  const [emoji, setEmoji] = useState(initial?.emoji ?? "🥗");
+  const [iconCategory, setIconCategory] = useState<FoodIconCategory>(initial ? resolveFoodCategory(initial) : "other");
   const [note, setNote] = useState(initial?.note ?? "");
   const [image, setImage] = useState(initial?.image);
   const [values, setValues] = useState({
@@ -258,8 +279,9 @@ export function ProductForm({
     onSave({
       id: initial?.id ?? crypto.randomUUID(),
       name: name.trim(),
-      category,
-      emoji: emoji.trim() || "🥗",
+      category: foodCategoryLabel(iconCategory),
+      iconCategory,
+      emoji: initial?.emoji ?? "",
       note: note.trim(),
       image,
       custom: true,
@@ -295,32 +317,12 @@ export function ProductForm({
           value={name}
           maxLength={100}
           onChange={(event) => setName(event.target.value)}
-          placeholder="Например, йогурт без добавок"
+          placeholder="Например, сыр гауда"
           required
           autoFocus
         />
       </Field>
-      <div className="form-grid">
-        <Field label="Категория">
-          <select
-            className="input"
-            value={category}
-            onChange={(event) => setCategory(event.target.value)}
-          >
-            {categories.map((item) => (
-              <option key={item}>{item}</option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Значок">
-          <input
-            className="input"
-            value={emoji}
-            maxLength={12}
-            onChange={(event) => setEmoji(event.target.value)}
-          />
-        </Field>
-      </div>
+      <CategoryPicker value={iconCategory} onChange={setIconCategory} options={[...PRODUCT_CATEGORIES, ...RECIPE_CATEGORIES]} />
       <p className="helper">
         Все значения — на 100 г. Перенесите их с упаковки продукта.
       </p>
@@ -375,7 +377,7 @@ export function ProductForm({
             event.target.value = "";
           }}
         />
-        <span className="helper">JPEG, PNG или WebP, до 5 МБ</span>
+        <span className="helper">Необязательно. Фото заменит значок категории. JPEG, PNG или WebP, до 5 МБ.</span>
       </label>
       {image && (
         <div className="ingredient-row">
@@ -426,7 +428,11 @@ export function RecipeForm({
   onCancel: () => void;
 }) {
   const [name, setName] = useState(initial?.name ?? "");
-  const [emoji, setEmoji] = useState(initial?.emoji ?? "🍲");
+  const [iconCategory, setIconCategory] = useState<FoodIconCategory>(() => {
+    const category = initial ? resolveFoodCategory(initial, products) : "main";
+    if (category.startsWith("sandwich")) return "sandwich";
+    return RECIPE_CATEGORIES.some(({ id }) => id === category) ? category : "main";
+  });
   const [servings, setServings] = useState(String(initial?.servings ?? 2));
   const [cookedWeight, setCookedWeight] = useState(
     initial ? String(initial.cookedWeight) : "",
@@ -454,7 +460,8 @@ export function RecipeForm({
   const previewRecipe: Recipe = {
     id: initial?.id ?? "",
     name,
-    emoji,
+    emoji: initial?.emoji ?? "",
+    iconCategory,
     servings: Number(servings),
     cookedWeight: Number(cookedWeight),
     ingredients: ingredientValues,
@@ -492,7 +499,6 @@ export function RecipeForm({
       ...previewRecipe,
       id: initial?.id ?? crypto.randomUUID(),
       name: name.trim(),
-      emoji: emoji.trim() || "🍲",
     });
   }
   return (
@@ -503,19 +509,19 @@ export function RecipeForm({
           value={name}
           maxLength={100}
           onChange={(event) => setName(event.target.value)}
-          placeholder="Например, любимая овсянка"
+          placeholder="Например, сэндвич с курицей"
           autoFocus
           required
         />
       </Field>
-      <Field label="Значок">
-        <input
-          className="input"
-          value={emoji}
-          maxLength={12}
-          onChange={(event) => setEmoji(event.target.value)}
-        />
-      </Field>
+      <CategoryPicker value={iconCategory} onChange={setIconCategory} options={RECIPE_CATEGORIES} />
+      <div className="food-selection-preview">
+        <FoodIcon food={previewRecipe} products={products} size={64} />
+        <div>
+          <strong>{foodCategoryLabel(resolveFoodCategory(previewRecipe, products))}</strong>
+          {iconCategory === "sandwich" && <p className="helper">Начинка значка определяется по ингредиентам. Если есть и птица, и колбаса, используется та, которой больше по весу.</p>}
+        </div>
+      </div>
       {!products.length && (
         <p className="notice">
           Сначала добавьте хотя бы один продукт в раздел «Продукты».
@@ -543,7 +549,7 @@ export function RecipeForm({
                 )}
               {products.map((product) => (
                 <option key={product.id} value={product.id}>
-                  {product.emoji} {product.name}
+                  {product.name}
                 </option>
               ))}
             </select>
@@ -696,6 +702,7 @@ export function FoodForm({
       meal: mealType,
       name: selected.name,
       emoji: selected.emoji,
+      iconCategory: resolveFoodCategory(selected, products),
       productId: selectedProduct?.id,
       grams: Number(grams),
       nutrients,
@@ -744,11 +751,12 @@ export function FoodForm({
           {!filtered.length && <option value="">Ничего не найдено</option>}
           {filtered.map((item) => (
             <option key={item.id} value={item.id}>
-              {item.emoji} {item.name}
+              {item.name}
             </option>
           ))}
         </select>
       </Field>
+      {selected && <div className="food-selection-preview"><FoodIcon food={selected} products={products} size={52} /><div><strong>{selected.name}</strong><p className="helper">{foodCategoryLabel(resolveFoodCategory(selected, products))}</p></div></div>}
       {!filtered.length && (
         <p className="helper">
           {search

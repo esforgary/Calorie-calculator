@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createInitialData } from './seed';
 import type { AppData } from './types';
 
-type Session = { user: { id: string; email: string } } | null;
+type Session = { access_token: string; user: { id: string; email: string } } | null;
 type Result = { data: unknown; error: { message: string; code?: string } | null };
 type Request = { operation: 'select' | 'insert' | 'update'; owner?: string; revision?: number; payload?: unknown; signal?: AbortSignal };
 
@@ -52,19 +52,31 @@ const fake = vi.hoisted(() => {
   };
   return {
     state, client, listeners,
-    emit(session: Session) {
+    emit(session: Session, event = session ? 'SIGNED_IN' : 'SIGNED_OUT') {
       state.session = session;
-      for (const listener of listeners) listener(session ? 'SIGNED_IN' : 'SIGNED_OUT', session);
+      for (const listener of listeners) listener(event, session);
     },
   };
 });
 
-vi.mock('./supabase', () => ({ configured: true, supabase: fake.client, supabaseConfigurationError: null }));
+vi.mock('./supabase', async () => {
+  const { createSessionPolicy } = await import('./authSession');
+  return { configured: true, supabase: fake.client, supabaseConfigurationError: null,
+    sessionPolicy: createSessionPolicy({
+      getItem: key => localStorage.getItem(key),
+      setItem: (key, value) => { try { localStorage.setItem(key, value); } catch { /* unavailable storage */ } },
+    }),
+  };
+});
 import { isAppData, useAppData } from './useAppData';
+import { REMEMBER_SESSION_KEY, REMEMBER_SESSION_MS } from './authSession';
 
 const GUEST = 'kall:diary:guest:v1';
 const userKey = (id: string) => `kall:diary:${id}:v1`;
-const account = (id: string): Session => ({ user: { id, email: `${id}@example.test` } });
+const account = (id: string, start = Date.now(), sessionId = `${id}-session`): Session => ({
+  access_token: `header.${btoa(JSON.stringify({ sub: id, session_id: sessionId, iat: Math.floor(Date.now() / 1000), amr: [{ method: 'password', timestamp: Math.floor(start / 1000) }] }))}.signature`,
+  user: { id, email: `${id}@example.test` },
+});
 const row = (data: AppData, revision = 1): Result => ({ data: { data, revision, updated_at: '2026-10-11T08:00:00Z' }, error: null });
 const named = (name: string): AppData => ({ ...createInitialData(), profile: { ...createInitialData().profile, name } });
 const cache = (data: AppData, revision: number | null = null, dirty = false) => JSON.stringify({ cacheVersion: 1, data, revision, dirty, updatedAt: null });
@@ -83,13 +95,15 @@ async function debounce() { await act(async () => { await vi.advanceTimersByTime
 
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
-  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+  vi.setSystemTime(new Date('2026-10-11T10:00:00Z'));
   vi.clearAllMocks();
   localStorage.clear();
   fake.listeners.clear();
   fake.state.session = null;
   fake.state.requests = [];
   fake.state.respond = async () => ({ data: null, error: null });
+  fake.client.auth.signOut.mockImplementation(async () => { fake.emit(null); return { error: null }; });
   newRoot();
 });
 afterEach(async () => {
@@ -100,15 +114,18 @@ afterEach(async () => {
 });
 
 describe('useAppData lifecycle and ownership', () => {
-  it('allows durable guest edits after configured auth initializes under StrictMode', async () => {
+  it('locks the diary and preserves existing guest data without exposing or editing it', async () => {
+    localStorage.setItem(GUEST, cache(named('Старый гостевой дневник')));
     await mount();
     expect(fake.client.auth.onAuthStateChange).toHaveBeenCalledTimes(2);
     expect(fake.listeners.size).toBe(1);
     expect(view.authReady).toBe(true);
-    expect(view.editable).toBe(true);
+    expect(view.authenticated).toBe(false);
+    expect(view.editable).toBe(false);
     await act(async () => { view.setData(current => ({ ...current, profile: { ...current.profile, name: 'Гость' } })); });
-    expect(view.data.profile.name).toBe('Гость');
-    expect(JSON.parse(localStorage.getItem(GUEST)!).data.profile.name).toBe('Гость');
+    expect(view.data.profile.name).not.toBe('Гость');
+    expect(view.data.profile.name).not.toBe('Старый гостевой дневник');
+    expect(JSON.parse(localStorage.getItem(GUEST)!).data.profile.name).toBe('Старый гостевой дневник');
     await debounce();
     expect(fake.state.requests).toHaveLength(0);
   });
@@ -197,27 +214,98 @@ describe('useAppData lifecycle and ownership', () => {
   });
 
   it('backs up the exact malformed cache before its first replacement', async () => {
-    localStorage.setItem(GUEST, '{broken JSON');
+    fake.state.session = account('alice');
+    localStorage.setItem(userKey('alice'), '{broken JSON');
     await mount();
-    expect(localStorage.getItem(GUEST)).toBe('{broken JSON');
     await act(async () => { view.setData(named('Восстановленный')); });
-    const backupKey = Object.keys(localStorage).find(key => key.startsWith(`${GUEST}:corrupt-backup:`));
+    const backupKey = Object.keys(localStorage).find(key => key.startsWith(`${userKey('alice')}:corrupt-backup:`));
     expect(backupKey).toBeDefined();
     expect(localStorage.getItem(backupKey!)).toBe('{broken JSON');
-    expect(JSON.parse(localStorage.getItem(GUEST)!).data.profile.name).toBe('Восстановленный');
+    expect(JSON.parse(localStorage.getItem(userKey('alice'))!).data.profile.name).toBe('Восстановленный');
   });
 
   it('preserves malformed source when storage cannot hold its backup', async () => {
-    localStorage.setItem(GUEST, '{broken JSON');
-    await mount();
+    fake.state.session = account('alice');
+    localStorage.setItem(userKey('alice'), '{broken JSON');
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('Full', 'QuotaExceededError'); });
-    await act(async () => { view.setData(named('В памяти')); });
-    expect(localStorage.getItem(GUEST)).toBe('{broken JSON');
+    await mount();
+    expect(localStorage.getItem(userKey('alice'))).toBe('{broken JSON');
     expect(view.error).toContain('Экспортируйте');
     expect(view.editable).toBe(false);
     vi.restoreAllMocks();
     await act(async () => { view.retrySync(); });
+    await flush();
     expect(view.editable).toBe(true);
+  });
+
+  it('expires an open diary after 30 days and never renews that deadline on token refresh', async () => {
+    const start = Date.now() - REMEMBER_SESSION_MS + 1500;
+    fake.state.session = account('alice', start);
+    await mount();
+    const deadline = view.sessionExpiresAt;
+    expect(view.authenticated).toBe(true);
+    await act(async () => { fake.emit(account('alice', start), 'TOKEN_REFRESHED'); });
+    expect(view.sessionExpiresAt).toBe(deadline);
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    expect(view.authenticated).toBe(false);
+    expect(view.editable).toBe(false);
+    expect(view.user).toBeNull();
+    expect(fake.client.auth.signOut).toHaveBeenCalledWith({ scope: 'local' });
+  });
+
+  it('rejects a restored expired session without reading any personal cloud data', async () => {
+    fake.state.session = account('alice', Date.now() - REMEMBER_SESSION_MS);
+    await mount();
+    expect(view.authReady).toBe(true);
+    expect(view.authenticated).toBe(false);
+    expect(fake.state.requests).toHaveLength(0);
+  });
+
+  it('rechecks expiry on returning to a suspended tab before accepting edits', async () => {
+    fake.state.session = account('alice');
+    await mount();
+    vi.setSystemTime(new Date(Date.now() + REMEMBER_SESSION_MS));
+    await act(async () => { window.dispatchEvent(new Event('focus')); view.setData(named('Просроченная правка')); });
+    expect(view.authenticated).toBe(false);
+    expect(view.data.profile.name).not.toBe('Просроченная правка');
+    expect(fake.state.requests.every(request => request.operation === 'select')).toBe(true);
+  });
+
+  it('keeps memory-only changes private until the same account logs in again after expiry', async () => {
+    fake.state.session = account('alice', Date.now() - REMEMBER_SESSION_MS + 1000);
+    await mount();
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('Full', 'QuotaExceededError'); });
+    await act(async () => { view.setData(named('Несохранённые правки')); });
+    vi.setSystemTime(new Date(Date.now() + 2000));
+    await act(async () => { window.dispatchEvent(new Event('focus')); });
+    expect(view.authenticated).toBe(false);
+    expect(view.data.profile.name).not.toBe('Несохранённые правки');
+    vi.restoreAllMocks();
+    await act(async () => { fake.emit(account('alice', Date.now(), 'fresh-login')); });
+    await flush();
+    expect(view.authenticated).toBe(true);
+    expect(view.data.profile.name).toBe('Несохранённые правки');
+  });
+
+  it('locks immediately on logout, keeps pending edits in the owner cache, and rejects that session after reload', async () => {
+    const oldSession = account('alice');
+    fake.state.session = oldSession;
+    await mount();
+    await act(async () => { view.setData(named('Правки перед выходом')); });
+    let finishLogout!: () => void;
+    fake.client.auth.signOut.mockImplementationOnce(() => new Promise(resolve => { finishLogout = () => resolve({ error: null }); }));
+    let logout!: Promise<void>;
+    await act(async () => { logout = view.signOut(); });
+    expect(view.authenticated).toBe(false);
+    expect(view.data.profile.name).not.toBe('Правки перед выходом');
+    expect(JSON.parse(localStorage.getItem(userKey('alice'))!).data.profile.name).toBe('Правки перед выходом');
+    expect(JSON.parse(localStorage.getItem(`${REMEMBER_SESSION_KEY}:alice:alice-session`)!).revoked).toBe(true);
+    await act(async () => { finishLogout(); await logout; fake.emit(oldSession); });
+    expect(view.authenticated).toBe(false);
+    await act(async () => { fake.emit(account('bob', Date.now(), 'bob-new')); });
+    await flush();
+    expect(view.user?.id).toBe('bob');
+    expect(view.data.profile.name).not.toBe('Правки перед выходом');
   });
 
   it('accepts only bounded raster data URLs in imported product images', () => {
@@ -241,5 +329,11 @@ describe('useAppData lifecycle and ownership', () => {
     expect(isAppData({ ...data, food: [entry] })).toBe(true);
     expect(isAppData({ ...data, food: [{ ...entry, productId: 'oats' }] })).toBe(true);
     expect(isAppData({ ...data, food: [{ ...entry, productId: 42 }] })).toBe(false);
+    expect(isAppData({ ...data, food: [{ ...entry, iconCategory: 'sandwich-chicken' }] })).toBe(true);
+    expect(isAppData({ ...data, food: [{ ...entry, iconCategory: 'invalid' }] })).toBe(false);
+    expect(isAppData({ ...data, products: [{ ...data.products[0], iconCategory: 'cheese' }] })).toBe(true);
+    expect(isAppData({ ...data, products: [{ ...data.products[0], iconCategory: 'invalid' }] })).toBe(false);
+    expect(isAppData({ ...data, recipes: [{ id: 'recipe', name: 'Суп', emoji: '🥣', servings: 1, cookedWeight: 100, ingredients: [], iconCategory: 'soup' }] })).toBe(true);
+    expect(isAppData({ ...data, recipes: [{ id: 'recipe', name: 'Суп', emoji: '🥣', servings: 1, cookedWeight: 100, ingredients: [], iconCategory: 'invalid' }] })).toBe(false);
   });
 });

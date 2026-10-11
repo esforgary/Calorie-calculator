@@ -7,7 +7,6 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
-  CircleHelp,
   Cloud,
   Droplets,
   Flame,
@@ -15,9 +14,7 @@ import {
   LayoutDashboard,
   Leaf,
   LogOut,
-  Menu,
   Moon,
-  MoreHorizontal,
   Pencil,
   Plus,
   Search,
@@ -27,9 +24,11 @@ import {
   Sunrise,
   Trash2,
   Utensils,
+  LockKeyhole,
   X,
 } from "lucide-react";
 import { isAppData, useAppData } from "./useAppData";
+import { FoodIcon } from "./FoodIcon";
 import {
   calculateProfile,
   dateOffset,
@@ -79,17 +78,17 @@ const meals: { id: MealType; name: string; time: string; icon: typeof Sun }[] =
     {
       id: "breakfast",
       name: "Завтрак",
-      time: "Начало хорошего дня",
+      time: "Нет записей",
       icon: Sunrise,
     },
-    { id: "lunch", name: "Обед", time: "Время подкрепиться", icon: Sun },
+    { id: "lunch", name: "Обед", time: "Нет записей", icon: Sun },
     {
       id: "dinner",
       name: "Ужин",
-      time: "Спокойное завершение дня",
+      time: "Нет записей",
       icon: Moon,
     },
-    { id: "snack", name: "Перекус", time: "Небольшая пауза", icon: Leaf },
+    { id: "snack", name: "Перекус", time: "Нет записей", icon: Leaf },
   ];
 const number = (n: number, digits = 0) =>
   new Intl.NumberFormat("ru-RU", { maximumFractionDigits: digits }).format(n);
@@ -183,26 +182,6 @@ function Modal({
         {children}
       </div>
     </div>
-  );
-}
-
-function FoodImage({
-  image,
-  emoji,
-  className = "",
-}: {
-  image?: string;
-  emoji: string;
-  className?: string;
-}) {
-  return (
-    <span className={`food-image ${className}`}>
-      {image ? (
-        <img src={image} alt="" />
-      ) : (
-        <span aria-hidden="true">{emoji}</span>
-      )}
-    </span>
   );
 }
 
@@ -308,8 +287,7 @@ function AuthPanel({
   if (!configured)
     return (
       <div className="notice">
-        Сейчас работает локальный дневник. Для входа настройте Supabase по
-        инструкции в README проекта.
+        Подключение авторизации не настроено. Проверьте конфигурацию Supabase.
       </div>
     );
   return (
@@ -361,8 +339,7 @@ function AuthPanel({
         />
       </label>
       <p className="helper">
-        После входа откроется отдельный облачный дневник. Локальные записи
-        останутся в этом браузере.
+        Вход сохраняется на этом устройстве на 30 дней. Дневник привязан к вашему аккаунту.
       </p>
       {message && (
         <div className="notice" role="status">
@@ -388,6 +365,30 @@ function AuthPanel({
 
 export default function App() {
   const store = useAppData();
+  useEffect(() => {
+    if (!store.authenticated) document.title = "Вход · Калл";
+  }, [store.authenticated]);
+  if (!store.authReady || !store.authenticated) {
+    return (
+      <div className="auth-page">
+        <div className="auth-brand"><Flame size={26} /><span>КАЛЛ<span className="brand-dot">.</span></span></div>
+        <main className="auth-card">
+          <span className="auth-lock"><LockKeyhole size={26} /></span>
+          <span className="eyebrow">ЛИЧНЫЙ ДНЕВНИК ПИТАНИЯ</span>
+          <h1>Вход в аккаунт</h1>
+          {!store.authReady ? <p className="auth-loading" role="status">Проверка сессии…</p> : <>
+            {store.error && <p className="error-text" role="alert">{store.error}</p>}
+            <AuthPanel configured={store.configured} onSignIn={store.signIn} onSignUp={store.signUp} onDone={() => {}} />
+          </>}
+        </main>
+        <p className="auth-caption">Калории / БЖУ / Активность / Сон</p>
+      </div>
+    );
+  }
+  return <Diary key={store.user?.id} store={store} />;
+}
+
+export function Diary({ store }: { store: ReturnType<typeof useAppData> }) {
   const { data, setData, user } = store;
   const identityRef = useRef(user?.id ?? "guest");
   identityRef.current = user?.id ?? "guest";
@@ -396,7 +397,6 @@ export default function App() {
   const [page, setPage] = useState<Page>("dashboard");
   const [date, setDate] = useState(today());
   const [modal, setModal] = useState<ModalState>(null);
-  const [menu, setMenu] = useState(false);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("Все");
   const [toast, setToast] = useState("");
@@ -436,21 +436,12 @@ export default function App() {
     setConfirm(null);
     setInsight(null);
   }, [user?.id]);
-  useEffect(() => {
-    if (!menu) return;
-    const escape = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setMenu(false);
-    };
-    document.addEventListener("keydown", escape);
-    return () => document.removeEventListener("keydown", escape);
-  }, [menu]);
   const notify = (message: string) => {
     setToast(message);
     setModal(null);
   };
   const go = (next: Page) => {
     setPage(next);
-    setMenu(false);
     setSearch("");
   };
   const openTracked = (type: "walk" | "sleep") => {
@@ -607,123 +598,30 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      {menu && <div className="sidebar-shade" onClick={() => setMenu(false)} />}
-      <aside
-        className={`sidebar ${menu ? "open" : ""}`}
-        aria-label="Главная навигация"
-      >
-        <a
-          className="brand"
-          href="#"
-          onClick={(e) => {
-            e.preventDefault();
-            go("dashboard");
-          }}
-        >
-          <span className="brand-mark">
-            <Leaf size={26} />
-          </span>
-          калл<span className="brand-dot">.</span>
-        </a>
-        <p className="brand-tagline">маленькие шаги к себе</p>
-        <div className="nav-caption">МОЁ ПРОСТРАНСТВО</div>
-        <nav>
+      <header className="app-header">
+        <button className="brand" onClick={() => go("dashboard")} aria-label="Калл — дневник">
+          <span className="brand-mark"><Flame size={23} /></span>
+          КАЛЛ<span className="brand-dot">.</span>
+        </button>
+        <nav className="primary-nav" aria-label="Главная навигация">
           {pages.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => go(item.id)}
+            <button key={item.id} onClick={() => go(item.id)}
               className={`nav-link ${page === item.id ? "selected" : ""}`}
-              aria-current={page === item.id ? "page" : undefined}
-            >
-              <item.icon size={20} />
-              <span>{item.name}</span>
-              {page === item.id && <i />}
+              aria-current={page === item.id ? "page" : undefined}>
+              <item.icon size={17} /><span>{item.name}</span>
             </button>
           ))}
         </nav>
-        <div className="sidebar-note">
-          <span className="tiny-leaf">
-            <Leaf size={19} />
+        <div className="header-tools">
+          <span className={`save-status ${store.error ? "has-error" : ""}`} title={store.syncStatus}>
+            <span /><span className="status-label">{store.syncStatus}</span>
           </span>
-          <h3>В своём ритме</h3>
-          <p>
-            Не идеальный рацион,
-            <br />а привычки, с которыми
-            <br />
-            вам хорошо.
-          </p>
-          <span className="note-leaf one" />
-          <span className="note-leaf two" />
-        </div>
-        <div className="sidebar-bottom">
-          <button
-            onClick={() => go("profile")}
-            className={`nav-link ${page === "profile" ? "selected" : ""}`}
-          >
-            <Settings2 size={20} />
-            Профиль и цели
+          <button className={`account-avatar ${page === "profile" ? "selected" : ""}`} onClick={() => go("profile")} aria-label="Профиль и цели" title={user?.email}>
+            {data.profile.name?.[0]?.toUpperCase() || <Settings2 size={18} />}
           </button>
-          <button
-            onClick={() => setModal({ type: "about" })}
-            className="nav-link muted"
-          >
-            <CircleHelp size={20} />О расчётах
-          </button>
-          <div className="sidebar-user">
-            <span className="avatar">
-              {data.profile.name?.[0]?.toUpperCase() || <Leaf size={19} />}
-            </span>
-            <div>
-              <strong>{data.profile.name || "Ваш дневник"}</strong>
-              <span>{user ? "Облачное сохранение" : "На этом устройстве"}</span>
-            </div>
-            <button
-              className="icon-button"
-              onClick={() =>
-                user ? go("profile") : setModal({ type: "auth" })
-              }
-              aria-label={user ? "Настройки аккаунта" : "Войти"}
-            >
-              <MoreHorizontal size={19} />
-            </button>
-          </div>
         </div>
-      </aside>
+      </header>
       <div className="workspace">
-        <header className="topbar">
-          <div className="topbar-left">
-            <button
-              className="icon-button mobile-menu"
-              onClick={() => setMenu(!menu)}
-              aria-label="Открыть меню"
-              aria-expanded={menu}
-            >
-              <Menu size={23} />
-            </button>
-            <span>Мой дневник</span>
-            <ChevronRight size={14} />
-            <strong>
-              {page === "profile"
-                ? "Профиль и цели"
-                : pages.find((p) => p.id === page)?.name}
-            </strong>
-          </div>
-          <div className="topbar-right">
-            <span className={`save-status ${store.error ? "has-error" : ""}`}>
-              <span />
-              {user ? store.syncStatus : "Локальный режим"}
-            </span>
-            <button
-              className="account-button"
-              onClick={() =>
-                user ? go("profile") : setModal({ type: "auth" })
-              }
-            >
-              {user ? <Cloud size={17} /> : <span className="login-dot" />}
-              <span>{user ? "Мой аккаунт" : "Войти по email"}</span>
-            </button>
-          </div>
-        </header>
         <main>
           {store.error && (
             <div className="sync-banner" role="alert">
@@ -759,36 +657,8 @@ export default function App() {
           )}
           <div className="page-heading">
             <div>
-              <div className="eyebrow">
-                {page === "dashboard"
-                  ? "ПИТАНИЕ · ДВИЖЕНИЕ · БАЛАНС"
-                  : "ВАШ ПУТЬ К ХОРОШЕМУ САМОЧУВСТВИЮ"}
-              </div>
-              <h1>
-                {page === "dashboard"
-                  ? `${isToday ? "Хорошего дня" : "Ваш день"}${data.profile.name ? `, ${data.profile.name}` : ""}`
-                  : page === "profile"
-                    ? "Профиль и цели"
-                    : pages.find((p) => p.id === page)?.name}
-                {page === "dashboard" && (
-                  <span className="greeting-sun">☀</span>
-                )}
-              </h1>
-              <p>
-                {
-                  {
-                    dashboard:
-                      "Всё, что помогает заботиться о себе, — в одном месте.",
-                    products:
-                      "Знакомые продукты, понятный состав и место для нового.",
-                    recipes: "Ваши любимые сочетания. Мы посчитаем всё за вас.",
-                    activity:
-                      "Каждая прогулка — маленький вклад в самочувствие.",
-                    sleep: "Полноценный отдых — тоже часть заботы о себе.",
-                    profile: "Немного о вас — для более подходящих ориентиров.",
-                  }[page]
-                }
-              </p>
+              <h1>{page === "dashboard" ? "Дневник питания" : page === "profile" ? "Профиль и цели" : pages.find((p) => p.id === page)?.name}</h1>
+              <p>{{ dashboard: "Калории и состав рациона за день", products: "Каталог продуктов · пищевая ценность на 100 г", recipes: "Состав, порции и пищевая ценность блюд", activity: "Прогулки, шаги и расход энергии", sleep: "Продолжительность и расход энергии", profile: "Параметры расчёта и настройки аккаунта" }[page]}</p>
             </div>
             {["dashboard", "activity", "sleep"].includes(page) ? (
               datePicker
@@ -819,7 +689,7 @@ export default function App() {
                     <Sparkles size={23} />
                   </div>
                   <div>
-                    <strong>Давайте познакомимся</strong>
+                    <strong>Настройте дневной лимит</strong>
                     <p>
                       Заполните профиль, чтобы узнать свою цель по калориям и
                       БЖУ.
@@ -841,7 +711,7 @@ export default function App() {
                       <h2>Баланс на день</h2>
                       <span className="pill">
                         <span />
-                        {target ? "В вашем ритме" : "Начнём с малого"}
+                        {target ? "Суточная цель" : "Цель не задана"}
                       </span>
                     </div>
                     <div className="nutrition-content">
@@ -863,7 +733,7 @@ export default function App() {
                               className="text-button"
                               onClick={() => go("profile")}
                             >
-                              Рассчитать мой ориентир →
+                              Настроить лимит →
                             </button>
                           )}
                         </div>
@@ -894,7 +764,7 @@ export default function App() {
                           color="var(--carbs)"
                         />
                         <p className="mini-note">
-                          Баланс важнее идеальных цифр.
+                          БЖУ указаны в граммах.
                         </p>
                       </div>
                     </div>
@@ -952,15 +822,7 @@ export default function App() {
                             </div>
                             {entries.map((entry) => (
                               <div className="food-entry" key={entry.id}>
-                                <FoodImage
-                                  image={
-                                    entry.image ??
-                                    data.products.find(
-                                      (p) => p.id === entry.productId,
-                                    )?.image
-                                  }
-                                  emoji={entry.emoji}
-                                />
+                                <FoodIcon food={{ ...entry, image: entry.image ?? data.products.find(p => p.id === entry.productId)?.image }} products={data.products} size={40} />
                                 <div>
                                   <strong>{entry.name}</strong>
                                   <span>
@@ -999,15 +861,15 @@ export default function App() {
                       <Leaf size={15} />
                       <span>
                         {data.food.some((e) => e.date === date)
-                          ? "Порции записаны — можно вернуться к своему дню."
-                          : "Первая запись — начало вашей новой привычки."}
+                          ? "Все записанные порции учтены в итогах дня."
+                          : "Добавьте продукт или блюдо в приём пищи."}
                       </span>
                     </div>
                   </section>
                   <section className="card chart-card">
                     <div className="card-heading">
                       <div>
-                        <h2>Ваш баланс БЖУ</h2>
+                        <h2>БЖУ за неделю</h2>
                         <p>За последние 7 дней · доля энергии</p>
                       </div>
                       <div className="chart-legend">
@@ -1089,30 +951,7 @@ export default function App() {
                   </section>
                 </div>
                 <div className="dashboard-side">
-                  <section className="rhythm-card">
-                    <div className="rhythm-copy">
-                      <span className="eyebrow">БЕЗ СПЕШКИ. ДЛЯ СЕБЯ.</span>
-                      <h2>
-                        Хорошие привычки
-                        <br />
-                        растут постепенно.
-                      </h2>
-                      <p>
-                        Один сбалансированный приём пищи.
-                        <br />
-                        Одна прогулка. Один хороший день.
-                      </p>
-                    </div>
-                    <div className="plant-art" aria-hidden="true">
-                      <span className="plant-stem" />
-                      <i className="plant-leaf l1" />
-                      <i className="plant-leaf l2" />
-                      <i className="plant-leaf l3" />
-                      <i className="plant-leaf l4" />
-                      <span className="plant-pot" />
-                    </div>
-                  </section>
-                  <section className="card compact-card">
+                  <section className="card compact-card movement-card">
                     <div className="card-heading">
                       <h2>
                         <span className="section-icon green">
@@ -1153,8 +992,8 @@ export default function App() {
                       <Sun size={18} />
                       <p>
                         {hasProfile && totalSteps >= data.profile.stepsGoal
-                          ? "Цель по шагам достигнута. Дайте себе время на отдых."
-                          : "Небольшая прогулка после обеда — удобный способ добавить движения."}
+                          ? "Дневная цель по шагам выполнена."
+                          : "Ориентир: прогулка после обеда в 13:00."}
                       </p>
                     </div>
                     <button
@@ -1185,7 +1024,7 @@ export default function App() {
                       <strong>
                         {totalSleep
                           ? `${Math.floor(totalSleep)} ч ${Math.round((totalSleep % 1) * 60)} мин`
-                          : "Тихая перезагрузка"}
+                          : "Нет записей"}
                       </strong>
                       <p>
                         {totalSleep
@@ -1207,13 +1046,13 @@ export default function App() {
                         <span className="section-icon blue">
                           <Droplets size={18} />
                         </span>
-                        Не забывайте о воде
+                        Вода
                       </h2>
                       <span className="water-total">
                         {number(water / 1000, 2)} л
                       </span>
                     </div>
-                    <p>Пейте по жажде, держите воду под рукой.</p>
+                    <p>Учёт выпитой воды за день.</p>
                     <div className="water-actions">
                       <div className="water-drops" aria-hidden="true">
                         {Array.from({ length: 6 }, (_, i) => (
@@ -1282,15 +1121,7 @@ export default function App() {
                 <span className="helper">Пищевая ценность на 100 г</span>
               </div>
               <div className="filters">
-                {[
-                  "Все",
-                  "Мои продукты",
-                  "Крупы",
-                  "Белковые",
-                  "Овощи и фрукты",
-                  "Молочные",
-                  "Другое",
-                ].map((c) => (
+                {["Все", "Мои продукты", ...new Set(data.products.map(p => p.category))].map((c) => (
                   <button
                     key={c}
                     className={category === c ? "active" : ""}
@@ -1312,7 +1143,7 @@ export default function App() {
                   .map((p) => (
                     <article className="card product-card" key={p.id}>
                       <div className="product-top">
-                        <FoodImage image={p.image} emoji={p.emoji} />
+                        <FoodIcon food={p} size={64} />
                         <span className="product-category">
                           {p.custom ? "Мой продукт" : p.category}
                         </span>
@@ -1403,7 +1234,7 @@ export default function App() {
                     return (
                       <article key={r.id} className="card recipe-card">
                         <div className="recipe-art">
-                          <span>{r.emoji}</span>
+                          <FoodIcon food={r} products={data.products} size={90} />
                           <span className="pill">{r.servings} порц.</span>
                         </div>
                         <div className="recipe-body">
@@ -1463,9 +1294,9 @@ export default function App() {
                 </div>
               ) : (
                 <div className="card empty-state spacious">
-                  <span className="empty-illustration">🥗</span>
-                  <span className="eyebrow">ВКУСНО. ПРОСТО. ПО-ВАШЕМУ.</span>
-                  <h2>У каждого есть любимый рецепт</h2>
+                  <span className="empty-illustration"><FoodIcon food={{ name: "Второе блюдо", iconCategory: "main" }} size={90} /></span>
+                  <span className="eyebrow">РЕЦЕПТЫ</span>
+                  <h2>Рецепты пока не добавлены</h2>
                   <p>
                     Соберите блюдо из продуктов, укажите вес после
                     приготовления.
@@ -1597,7 +1428,7 @@ export default function App() {
                   ) : (
                     <div className="empty-state">
                       <Footprints size={32} />
-                      <h3>У каждого шага есть значение</h3>
+                      <h3>Нет записанных прогулок</h3>
                       <p>Запишите первую прогулку за этот день.</p>
                     </div>
                   )}
@@ -1617,7 +1448,7 @@ export default function App() {
                     },
                     {
                       time: "13:00",
-                      title: "Перерыв для себя",
+                      title: "Дневная прогулка",
                       text: "15 минут движения после обеда",
                       Icon: Sun,
                     },
@@ -1662,13 +1493,13 @@ export default function App() {
               <div className="sleep-hero">
                 <div>
                   <span className="eyebrow">
-                    ВОССТАНОВЛЕНИЕ НАЧИНАЕТСЯ С ОТДЫХА
+                    ЖУРНАЛ СНА
                   </span>
-                  <h2>Позвольте себе выдохнуть</h2>
+                  <h2>Запись сна</h2>
                   <p>
                     Записывайте время, когда уснули и проснулись,
                     <br />
-                    чтобы лучше понимать свой ритм.
+                    для расчёта длительности и расхода энергии.
                   </p>
                   <button
                     className="button primary"
@@ -1700,7 +1531,7 @@ export default function App() {
                   <span className="helper">Уже входит в суточный обмен</span>
                 </div>
                 <div className="card stat-card">
-                  <p>Ваш ритм</p>
+                  <p>Количество записей</p>
                   <strong>
                     {sleep.length} <small>записей</small>
                   </strong>
@@ -1850,6 +1681,7 @@ export default function App() {
                   <span className="pill">
                     {user ? store.syncStatus : "Локальное сохранение"}
                   </span>
+                  {store.sessionExpiresAt && <p className="session-expiry">Вход сохранён до {new Date(store.sessionExpiresAt).toLocaleDateString("ru-RU")}.</p>}
                   {user ? (
                     <button
                       className="button secondary full-width"
@@ -1910,13 +1742,13 @@ export default function App() {
           <footer className="main-footer">
             <span>
               <Leaf size={14} />
-              калл — забота о себе каждый день
+              КАЛЛ · Личный дневник
             </span>
             <button
               className="text-button"
               onClick={() => setModal({ type: "about" })}
             >
-              Как мы считаем
+              Методика расчёта
               <ArrowRight size={13} />
             </button>
           </footer>
@@ -2098,7 +1930,7 @@ export default function App() {
           onClose={() => setInsight(null)}
         >
           <div className="insight-header">
-            <FoodImage image={insight.image} emoji={insight.emoji} />
+            <FoodIcon food={insight} size={72} />
             <div>
               <strong>{insight.kcal} ккал / 100 г</strong>
               <p>

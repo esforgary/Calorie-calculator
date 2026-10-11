@@ -1,3 +1,9 @@
+export type FoodIconCategory =
+  | "cheese" | "sausage" | "poultry" | "meat" | "fish" | "egg"
+  | "sweets" | "bakery" | "cereals" | "flakes" | "pasta" | "produce"
+  | "dairy" | "nuts" | "oil" | "other" | "soup" | "main" | "sandwich"
+  | "sandwich-chicken" | "sandwich-sausage" | "dessert" | "pizza" | "burger" | "roll";
+
 export interface Nutrients {
   kcal: number;
   protein: number;
@@ -10,6 +16,7 @@ export interface Product extends Nutrients {
   name: string;
   category: string;
   emoji: string;
+  iconCategory?: FoodIconCategory;
   image?: string;
   note?: string;
   custom?: boolean;
@@ -25,6 +32,7 @@ export interface Recipe {
   servings: number;
   cookedWeight: number;
   emoji: string;
+  iconCategory?: FoodIconCategory;
 }
 export type MealType = "breakfast" | "lunch" | "dinner" | "snack";
 export interface FoodEntry {
@@ -35,6 +43,7 @@ export interface FoodEntry {
   name: string;
   grams: number;
   emoji: string;
+  iconCategory?: FoodIconCategory;
   image?: string;
   nutrients: Nutrients;
 }
