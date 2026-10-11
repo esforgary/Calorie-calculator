@@ -3250,9 +3250,9 @@ input:focus, select:focus, textarea:focus { outline: 2px solid #82ad2a; }
   margin: 0;
   padding: 0 26px;
   background: radial-gradient(ellipse at 15% 0, #2d3847 0, transparent 36%), #14171c;
-  border: 7px solid #080a0c;
-  border-radius: 32px;
-  box-shadow: 0 24px 60px #24232d20;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 .app-header { display: flex; align-items: center; gap: 24px; min-height: 92px; border-bottom: 1px solid #ffffff0a; }
 .brand { font-size: 23px; gap: 7px; color: #fff; padding: 0; letter-spacing: -1px; flex-shrink: 0; }
@@ -3463,7 +3463,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid #82ad2a; }
 .about-content > h3 { color: #3e4e5d; }
 .insight-header p, .insight-list { color: #788797; }
 .toast { background: #edf5df; color: #435c20; border-color: #d5e6b4; }
-.auth-page { min-height: 100dvh; background: radial-gradient(ellipse at 30% 0, #303e50, transparent 55%), #14171c; border: 7px solid #080a0c; border-radius: 32px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 36px 22px; }
+.auth-page { min-height: 100dvh; background: radial-gradient(ellipse at 30% 0, #303e50, transparent 55%), #14171c; border: 0; border-radius: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 36px 22px; }
 .auth-brand { display: flex; gap: 8px; align-items: center; color: #f3f5f8; font-size: 23px; font-weight: 750; letter-spacing: -.7px; margin-bottom: 30px; }
 .auth-brand > svg { color: var(--green); }
 .auth-brand .brand-dot { margin-left: 0; }
