@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client';
 import type { Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createInitialData } from './seed';
-import type { AppData } from './types';
+import type { AppData, SavedThemePreset } from './types';
 
 type Session = { access_token: string; user: { id: string; email: string } } | null;
 type Result = { data: unknown; error: { message: string; code?: string } | null };
@@ -80,6 +80,9 @@ const account = (id: string, start = Date.now(), sessionId = `${id}-session`): S
 const row = (data: AppData, revision = 1): Result => ({ data: { data, revision, updated_at: '2026-10-11T08:00:00Z' }, error: null });
 const named = (name: string): AppData => ({ ...createInitialData(), profile: { ...createInitialData().profile, name } });
 const cache = (data: AppData, revision: number | null = null, dirty = false) => JSON.stringify({ cacheVersion: 1, data, revision, dirty, updatedAt: null });
+const savedThemePreset: SavedThemePreset = {
+  id: 'theme-evening', name: 'Вечер', colors: { accent: '#AABBCC', background: '#112233', surface: '#445566' },
+};
 let root: Root;
 let view: ReturnType<typeof useAppData>;
 
@@ -233,6 +236,35 @@ describe('useAppData lifecycle and ownership', () => {
     expect(view.editable).toBe(true);
   });
 
+  it('saves named theme presets with the account diary and restores them after remount', async () => {
+    fake.state.session = account('alice');
+    let remote = named('Алиса');
+    let revision = 2;
+    fake.state.respond = async request => {
+      if (request.operation === 'select') return row(remote, revision);
+      remote = JSON.parse(JSON.stringify(request.payload));
+      revision += 1;
+      return { data: { revision, updated_at: '2026-10-11T10:00:00Z' }, error: null };
+    };
+    await mount();
+    await act(async () => {
+      view.setData(current => ({ ...current, theme: savedThemePreset.colors, themePresets: [savedThemePreset] }));
+    });
+    const saved = JSON.parse(localStorage.getItem(userKey('alice'))!).data;
+    expect(saved.themePresets).toEqual([savedThemePreset]);
+    expect(saved.theme).toEqual(savedThemePreset.colors);
+    expect(isAppData(saved)).toBe(true);
+    await debounce();
+    expect(fake.state.requests.find(request => request.operation === 'update')?.payload).toEqual(saved);
+    expect(view.syncStatus).toBe('В облаке');
+    await act(async () => { root.unmount(); });
+    newRoot();
+    await mount();
+    expect(view.data.themePresets).toEqual([savedThemePreset]);
+    expect(view.data.theme).toEqual(savedThemePreset.colors);
+    expect(view.editable).toBe(true);
+  });
+
   it('backs up the exact malformed cache before its first replacement', async () => {
     fake.state.session = account('alice');
     localStorage.setItem(userKey('alice'), '{broken JSON');
@@ -337,6 +369,55 @@ describe('useAppData lifecycle and ownership', () => {
     for (const type of ['jpeg', 'png', 'webp']) {
       data.products[0].image = `data:image/${type};base64,aGVsbG8=`;
       expect(isAppData(data)).toBe(true);
+    }
+  });
+
+  it('accepts legacy version-1 diaries and preserves valid named theme presets through JSON', () => {
+    const legacy = JSON.parse(JSON.stringify(createInitialData()));
+    expect(legacy.themePresets).toBeUndefined();
+    expect(isAppData(legacy)).toBe(true);
+    expect(isAppData({ ...legacy, themePresets: [] })).toBe(true);
+    const presets = [savedThemePreset, { ...savedThemePreset, id: 'theme-long', name: 'Я'.repeat(40) }];
+    const imported = JSON.parse(JSON.stringify({ ...legacy, themePresets: presets }));
+    expect(isAppData(imported)).toBe(true);
+    expect(imported.themePresets).toEqual(presets);
+  });
+
+  it('rejects malformed theme preset collections, identifiers and names', () => {
+    const data = createInitialData();
+    for (const presets of [null, {}, 'theme', [null], [[]]]) {
+      expect(isAppData({ ...data, themePresets: presets })).toBe(false);
+    }
+    for (const id of [undefined, null, 42, '', ' \t ']) {
+      expect(isAppData({ ...data, themePresets: [{ ...savedThemePreset, id }] })).toBe(false);
+    }
+    for (const name of [undefined, null, 42, '', ' \t ', 'Я'.repeat(41)]) {
+      expect(isAppData({ ...data, themePresets: [{ ...savedThemePreset, name }] })).toBe(false);
+    }
+  });
+
+  it('requires all three six-digit hex colors in each saved theme preset', () => {
+    const data = createInitialData();
+    for (const colors of [undefined, null, [], {}, '#112233']) {
+      expect(isAppData({ ...data, themePresets: [{ ...savedThemePreset, colors }] })).toBe(false);
+    }
+    for (const key of ['accent', 'background', 'surface']) {
+      for (const color of [undefined, null, 123456, '', '#abc', '#11223344', '112233', '#gg1122']) {
+        const colors = { ...savedThemePreset.colors, [key]: color };
+        expect(isAppData({ ...data, themePresets: [{ ...savedThemePreset, colors }] })).toBe(false);
+      }
+    }
+  });
+
+  it('rejects duplicate preset identifiers and names regardless of case or surrounding spaces', () => {
+    const data = createInitialData();
+    const duplicates = [
+      { ...savedThemePreset, name: 'Другой' },
+      { ...savedThemePreset, id: 'another-theme', name: 'ВЕЧЕР' },
+      { ...savedThemePreset, id: 'another-theme', name: ' вечер ' },
+    ];
+    for (const duplicate of duplicates) {
+      expect(isAppData({ ...data, themePresets: [savedThemePreset, duplicate] })).toBe(false);
     }
   });
 

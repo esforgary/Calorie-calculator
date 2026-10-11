@@ -85,9 +85,15 @@ export interface Profile {
   stride: number;
   configured: boolean;
 }
+export interface SavedThemePreset {
+  id: string;
+  name: string;
+  colors: { accent: string; background: string; surface: string };
+}
 export interface AppData {
   version: 1;
   theme?: { accent: string; background: string; surface: string };
+  themePresets?: SavedThemePreset[];
   profile: Profile;
   products: Product[];
   recipes: Recipe[];

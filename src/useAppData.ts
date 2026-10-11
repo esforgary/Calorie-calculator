@@ -46,16 +46,29 @@ const category = (value: unknown) => value === undefined || isFoodIconCategory(v
 const unitWeight = (value: unknown) => value === undefined || (finite(value) && value > 0 && value <= 5000);
 const foodQuantity = (value: unknown) => value === undefined || (record(value)
   && (value.unit === 'serving' || value.unit === 'piece') && finite(value.amount) && value.amount > 0);
-const theme = (value: unknown) => value === undefined || (record(value)
-  && ['accent', 'background', 'surface'].every(key => text(value[key]) && /^#[0-9a-fA-F]{6}$/.test(value[key])));
+const themeColors = (value: unknown) => record(value)
+  && ['accent', 'background', 'surface'].every(key => text(value[key]) && /^#[0-9a-fA-F]{6}$/.test(value[key]));
 const listOf = (value: unknown, check: (item: Record<string, unknown>) => boolean) => Array.isArray(value) && value.every(item => record(item) && check(item));
+const themePresets = (value: unknown) => {
+  if (value === undefined) return true;
+  const ids = new Set<string>();
+  const names = new Set<string>();
+  return listOf(value, item => {
+    if (!text(item.id) || !item.id.trim() || !text(item.name) || !themeColors(item.colors)) return false;
+    const name = item.name.trim().toLowerCase();
+    if (!name || item.name.trim().length > 40 || ids.has(item.id) || names.has(name)) return false;
+    ids.add(item.id);
+    names.add(name);
+    return true;
+  });
+};
 
 /** Validate storage/imported JSON before the interface performs calculations on it. */
 export function isAppData(value: unknown): value is AppData {
   if (!record(value) || value.version !== 1 || !record(value.profile) || !record(value.water)) return false;
   const p = value.profile;
   return text(p.name) && ['female', 'male'].includes(String(p.sex)) && ['lose', 'maintain'].includes(String(p.goal))
-    && theme(value.theme)
+    && (value.theme === undefined || themeColors(value.theme)) && themePresets(value.themePresets)
     && typeof p.configured === 'boolean'
     && ['age', 'height', 'weight', 'targetWeight', 'activity', 'stepsGoal', 'stride'].every(key => finite(p[key]))
     && Object.values(value.water).every(amount => finite(amount) && amount >= 0)

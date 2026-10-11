@@ -1543,7 +1543,9 @@ export function Diary({ store }: { store: ReturnType<typeof useAppData> }) {
                 </div>
               </div>}
               {settingsTab === "appearance" && <div id="panel-appearance" role="tabpanel" aria-labelledby="settings-appearance" className="appearance-panel">
-                <ThemeSettings value={data.theme} disabled={!store.editable} onSave={theme => { if (!canEdit()) return false; setData(d => ({...d, theme})); setToast("Цвета сохранены"); return true; }} />
+                <ThemeSettings value={data.theme} customPresets={data.themePresets} disabled={!store.editable}
+                  onPresetsChange={update => { if (!canEdit()) return false; setData(d => ({ ...d, themePresets: update(d.themePresets ?? []) })); return true; }}
+                  onSave={theme => { if (!canEdit()) return false; setData(d => ({...d, theme})); setToast("Цвета сохранены"); return true; }} />
               </div>}
               {settingsTab === "account" && <div id="panel-account" role="tabpanel" aria-labelledby="settings-account" className="account-panel">
                 <section className="card account-card">
