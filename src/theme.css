@@ -104,7 +104,20 @@ html[data-diary-theme="active"], html[data-diary-theme="active"] body { backgrou
 }
 .app-shell :is(.tip-box p, .nutrient-preview strong, .profile-estimate span, .profile-estimate strong) { color: var(--surface-tint-ink); }
 .app-shell .calculation-note { color: var(--context-muted); }
-.app-shell .chart-day.chosen > span:last-child { background: var(--surface-tint); color: var(--surface-tint-ink); }
+.app-shell .chart-day { color: var(--surface-muted); }
+.app-shell .chart-day:hover {
+  --context-muted: var(--surface-soft-ink);
+  background: var(--surface-soft);
+  color: var(--surface-soft-ink);
+}
+.app-shell .chart-day.chosen {
+  --context-muted: var(--surface-tint-ink);
+  background: var(--surface-tint);
+  color: var(--surface-tint-ink);
+}
+.app-shell .chart-day > span:not(.chart-bar), .app-shell .chart-day > small { color: var(--context-muted); }
+.app-shell .chart-day.chosen > span:last-child { background: transparent; color: var(--surface-tint-ink); }
+.app-shell :is(.bmi-labels, .estimate-list > div > span, .estimate-list > p, .import-button) { color: var(--context-muted); }
 .app-shell .pill { background: var(--surface-soft); color: var(--surface-soft-ink); }
 .app-shell .nutrition-card .pill { background: var(--panel-soft); color: var(--panel-ink); }
 .app-shell .stat-card .section-icon { background: var(--panel-soft); color: var(--panel-ink); }
