@@ -656,7 +656,7 @@ export function Diary({ store }: { store: ReturnType<typeof useAppData> }) {
                         <div className="daily-limit">
                           <span>Дневной ориентир</span>
                           <strong>
-                            {target ? number(target) : "—"} <small>ккал</small>
+                            {target ? `${number(nutrients.kcal)} из ${number(target)}` : "—"} <small>ккал</small>
                           </strong>
                         </div>
                         <Macro

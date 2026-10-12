@@ -65,7 +65,7 @@ export function MacroRing({ nutrients, target }: { nutrients: Nutrients; target?
   return (
     <button
       type="button"
-      className={`calorie-ring macro-ring${progress.target ? " has-target" : ""}`}
+      className="calorie-ring macro-ring"
       data-mode={mode}
       aria-label={`${isCalories ? "Калории" : "Состав БЖУ"}. ${calorieSummary}. ${action}`}
       title={action}
@@ -114,7 +114,7 @@ export function MacroRing({ nutrients, target }: { nutrients: Nutrients; target?
       </svg>
       <span className="ring-label" aria-hidden="true">
         <Flame size={21} aria-hidden="true" />
-        <strong>{centerNumber(kcal)}{progress.target ? `/${centerNumber(progress.target)}` : ""}</strong>
+        <strong>{centerNumber(kcal)}</strong>
         <span className="ring-mode-label">{isCalories
           ? progress.percent === null ? "Цель не задана" : `${progress.percent}% от цели`
           : "ккал · состав БЖУ"}</span>

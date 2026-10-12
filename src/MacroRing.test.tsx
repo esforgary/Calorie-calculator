@@ -83,13 +83,13 @@ describe("macroComposition", () => {
 });
 
 describe("MacroRing", () => {
-  it("switches between macro composition and calorie progress using a native button", async () => {
+  it("switches between macro composition and calorie progress while keeping only eaten kcal in the center", async () => {
     await render({ ...eaten, kcal: 775 }, 1816);
     const button = container.querySelector<HTMLButtonElement>("button")!;
     expect(button.type).toBe("button");
     expect(button.getAttribute("data-mode")).toBe("macros");
     expect(button.getAttribute("aria-label")).toContain("Показать прогресс калорий");
-    expect(container.querySelector(".ring-label strong")?.textContent).toBe("775/1816");
+    expect(container.querySelector(".ring-label strong")?.textContent).toBe("775");
     expect(container.querySelector('[role="img"]')?.getAttribute("aria-label")).toContain("Состав съеденного");
 
     await toggle();
@@ -104,7 +104,7 @@ describe("MacroRing", () => {
 
     await toggle();
     expect(button.getAttribute("data-mode")).toBe("macros");
-    expect(container.querySelector(".ring-label strong")?.textContent).toBe("775/1816");
+    expect(container.querySelector(".ring-label strong")?.textContent).toBe("775");
   });
 
   it("updates the current calorie mode as food or the goal changes", async () => {
@@ -113,7 +113,7 @@ describe("MacroRing", () => {
     await render({ ...eaten, kcal: 4540 }, 1816);
     expect(container.querySelector(".macro-ring")?.getAttribute("data-mode")).toBe("calories");
     expect(container.querySelector('[data-progress="red"]')?.getAttribute("stroke-dasharray")).toBe("50 50");
-    expect(container.querySelector(".ring-label strong")?.textContent).toBe("4540/1816");
+    expect(container.querySelector(".ring-label strong")?.textContent).toBe("4540");
     expect(container.querySelector(".ring-mode-label")?.textContent).toBe("250% от цели");
 
     await render({ ...eaten, kcal: 4540 }, 4540);
