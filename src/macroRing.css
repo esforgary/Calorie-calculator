@@ -40,7 +40,6 @@
 
 .macro-ring > .ring-label { pointer-events: none; }
 .macro-ring .ring-label > .ring-mode-label { font-size: clamp(9px, 6.5cqi, 12px); }
-.macro-ring .ring-label > .ring-switch-hint { font-size: clamp(8px, 5.6cqi, 10px); margin-top: 7px; }
 
 @media (prefers-reduced-motion: reduce) {
   .calorie-ring.macro-ring,

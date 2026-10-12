@@ -118,7 +118,6 @@ export function MacroRing({ nutrients, target }: { nutrients: Nutrients; target?
         <span className="ring-mode-label">{isCalories
           ? progress.percent === null ? "Цель не задана" : `${progress.percent}% от цели`
           : "ккал · состав БЖУ"}</span>
-        <span className="ring-switch-hint">{isCalories ? "Нажмите → БЖУ" : "Нажмите → калории"}</span>
       </span>
     </button>
   );
