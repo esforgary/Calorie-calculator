@@ -3,7 +3,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import type { Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { MacroRing, macroComposition } from "./MacroRing";
+import { MacroRing, macroComposition, calorieProgress } from "./MacroRing";
 import type { Nutrients } from "./types";
 
 const empty: Nutrients = { kcal: 0, protein: 0, fat: 0, carbs: 0, fiber: 0 };
@@ -23,9 +23,42 @@ afterEach(async () => {
   container.remove();
 });
 
-async function render(nutrients: Nutrients) {
-  await act(async () => { root.render(<MacroRing nutrients={nutrients} />); });
+async function render(nutrients: Nutrients, target?: number | null) {
+  await act(async () => { root.render(<MacroRing nutrients={nutrients} target={target} />); });
 }
+
+async function toggle() {
+  await act(async () => { container.querySelector<HTMLButtonElement>(".macro-ring")!.click(); });
+}
+
+describe("calorieProgress", () => {
+  it.each([
+    [0, 0, 0, 0, 0],
+    [775, 775 / 1816 * 100, 0, 0, 43],
+    [1816, 100, 0, 0, 100],
+    [2724, 100, 50, 0, 150],
+    [3632, 100, 100, 0, 200],
+    [4540, 100, 100, 50, 250],
+    [5448, 100, 100, 100, 300],
+    [7264, 100, 100, 100, 400],
+  ])("draws %i kcal against an 1816 kcal goal in successive laps", (kcal, green, yellow, red, percent) => {
+    const progress = calorieProgress(kcal, 1816);
+    expect(progress.green).toBeCloseTo(green);
+    expect(progress.yellow).toBeCloseTo(yellow);
+    expect(progress.red).toBeCloseTo(red);
+    expect(progress.percent).toBe(percent);
+  });
+
+  it.each([undefined, null, 0, -100, NaN, Infinity])("keeps an invalid goal %s neutral", target => {
+    expect(calorieProgress(775, target)).toEqual({ target: null, percent: null, green: 0, yellow: 0, red: 0 });
+  });
+
+  it("ignores invalid eaten kcal and starts the next lap only above the boundary", () => {
+    for (const kcal of [-1, NaN, Infinity]) expect(calorieProgress(kcal, 1816).green).toBe(0);
+    expect(calorieProgress(1817, 1816).yellow).toBeCloseTo(100 / 1816);
+    expect(calorieProgress(3633, 1816).red).toBeCloseTo(100 / 1816);
+  });
+});
 
 describe("macroComposition", () => {
   it("uses the eaten macro energy, without requiring a calorie goal", () => {
@@ -50,6 +83,58 @@ describe("macroComposition", () => {
 });
 
 describe("MacroRing", () => {
+  it("switches between macro composition and calorie progress using a native button", async () => {
+    await render({ ...eaten, kcal: 775 }, 1816);
+    const button = container.querySelector<HTMLButtonElement>("button")!;
+    expect(button.type).toBe("button");
+    expect(button.getAttribute("data-mode")).toBe("macros");
+    expect(button.getAttribute("aria-label")).toContain("Показать прогресс калорий");
+    expect(container.querySelector(".ring-label strong")?.textContent).toBe("775/1816");
+    expect(container.querySelector('[role="img"]')?.getAttribute("aria-label")).toContain("Состав съеденного");
+
+    await toggle();
+    expect(button.getAttribute("data-mode")).toBe("calories");
+    expect(button.getAttribute("aria-label")).toContain("Показать состав БЖУ");
+    expect(container.querySelector(".ring-mode-label")?.textContent).toBe("43% от цели");
+    expect(container.querySelector('[role="img"]')?.getAttribute("aria-label")).toContain("43% дневного ориентира");
+    const progress = container.querySelector('[data-progress="green"]')!;
+    expect(progress.parentElement?.classList.contains("is-visible")).toBe(true);
+    expect(Number(progress.getAttribute("stroke-dasharray")!.split(" ")[0])).toBeCloseTo(775 / 1816 * 100);
+    expect(container.querySelector(".macro-ring-segment")?.parentElement?.getAttribute("aria-hidden")).toBe("true");
+
+    await toggle();
+    expect(button.getAttribute("data-mode")).toBe("macros");
+    expect(container.querySelector(".ring-label strong")?.textContent).toBe("775/1816");
+  });
+
+  it("updates the current calorie mode as food or the goal changes", async () => {
+    await render({ ...eaten, kcal: 775 }, 1816);
+    await toggle();
+    await render({ ...eaten, kcal: 4540 }, 1816);
+    expect(container.querySelector(".macro-ring")?.getAttribute("data-mode")).toBe("calories");
+    expect(container.querySelector('[data-progress="red"]')?.getAttribute("stroke-dasharray")).toBe("50 50");
+    expect(container.querySelector(".ring-label strong")?.textContent).toBe("4540/1816");
+    expect(container.querySelector(".ring-mode-label")?.textContent).toBe("250% от цели");
+
+    await render({ ...eaten, kcal: 4540 }, 4540);
+    expect(container.querySelector('[data-progress="green"]')?.getAttribute("stroke-dasharray")).toBe("100 0");
+    expect(container.querySelector('[data-progress="yellow"]')?.getAttribute("stroke-dasharray")).toBe("0 100");
+    expect(container.querySelector('[data-progress="red"]')?.getAttribute("stroke-dasharray")).toBe("0 100");
+    expect(container.querySelector(".ring-mode-label")?.textContent).toBe("100% от цели");
+  });
+
+  it("keeps calories readable with no goal, including after removing a saved goal", async () => {
+    await render(eaten, 1816);
+    await toggle();
+    await render(eaten, 0);
+    expect(container.querySelector(".ring-label strong")?.textContent).toBe("403");
+    expect(container.querySelector(".ring-mode-label")?.textContent).toBe("Цель не задана");
+    expect(container.querySelector('[role="img"]')?.getAttribute("aria-label")).toContain("Дневной ориентир не задан");
+    for (const segment of container.querySelectorAll(".calorie-progress-segment")) {
+      expect(segment.getAttribute("stroke-dasharray")).toBe("0 100");
+    }
+  });
+
   it("renders three contiguous colored sections and keeps recorded kcal in the center", async () => {
     await render(eaten);
     const segments = [...container.querySelectorAll<SVGCircleElement>(".macro-ring-segment")];

@@ -1,20 +1,57 @@
+.calorie-ring.macro-ring {
+  display: block;
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  -webkit-tap-highlight-color: transparent;
+  container-type: inline-size;
+  transition: transform .2s ease;
+}
+
+.calorie-ring.macro-ring:active { transform: scale(.97); }
+.calorie-ring.macro-ring:focus-visible { outline: 2px solid currentColor; outline-offset: 4px; }
+
 .macro-ring > .macro-ring-chart {
   display: block;
   transform: rotate(-90deg);
 }
 
-.macro-ring .macro-ring-segment {
+.macro-ring .macro-ring-segment,
+.macro-ring .calorie-progress-segment {
   fill: none;
   stroke-linecap: butt;
   transition: stroke-dasharray 0.6s ease, stroke-dashoffset 0.6s ease;
 }
+
+.macro-ring .calorie-progress-green { stroke: #9bdd31; }
+.macro-ring .calorie-progress-yellow { stroke: #f0c645; }
+.macro-ring .calorie-progress-red { stroke: #ed6262; }
+.macro-ring .ring-layer { opacity: 0; transition: opacity .3s ease; }
+.macro-ring .ring-layer.is-visible { opacity: 1; }
 
 .macro-ring .ring-label > svg {
   transform: none;
 }
 
 .macro-ring > .ring-label { pointer-events: none; }
+.macro-ring.has-target .ring-label > strong {
+  font-size: clamp(18px, 15cqi, 30px);
+  font-weight: 650;
+  letter-spacing: -.7px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.macro-ring .ring-label > .ring-mode-label { font-size: clamp(9px, 6.5cqi, 12px); }
+.macro-ring .ring-label > .ring-switch-hint { font-size: clamp(8px, 5.6cqi, 10px); margin-top: 7px; }
 
 @media (prefers-reduced-motion: reduce) {
-  .macro-ring .macro-ring-segment { transition: none; }
+  .calorie-ring.macro-ring,
+  .macro-ring .macro-ring-segment,
+  .macro-ring .calorie-progress-segment,
+  .macro-ring .ring-layer { transition: none; }
 }

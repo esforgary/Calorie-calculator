@@ -14,6 +14,7 @@ import {
   LayoutDashboard,
   Leaf,
   LogOut,
+  Minus,
   Moon,
   Pencil,
   Plus,
@@ -47,6 +48,7 @@ import {
   sumNutrients,
   today,
   walkStats,
+  weekDates,
 } from "./nutrition";
 import {
   FoodForm,
@@ -628,7 +630,7 @@ export function Diary({ store }: { store: ReturnType<typeof useAppData> }) {
                     </div>
                     <div className="nutrition-content">
                       <div className="ring-column">
-                        <MacroRing nutrients={nutrients} />
+                        <MacroRing nutrients={nutrients} target={target} />
                         <div className="calorie-remaining">
                           {target ? (
                             <>
@@ -679,7 +681,7 @@ export function Diary({ store }: { store: ReturnType<typeof useAppData> }) {
                           share={composition[2].share}
                         />
                         <p className="mini-note">
-                          БЖУ — в граммах. {hasProfile ? "Круг — доли энергии из БЖУ, полосы — прогресс к дневной цели." : "Круг и полосы — доли энергии из БЖУ."}
+                          БЖУ — в граммах. {hasProfile ? "Полосы — прогресс к дневной цели. Нажмите на круг, чтобы переключить БЖУ и калории." : "Круг и полосы — доли энергии из БЖУ."}
                         </p>
                       </div>
                     </div>
@@ -785,7 +787,7 @@ export function Diary({ store }: { store: ReturnType<typeof useAppData> }) {
                     <div className="card-heading">
                       <div>
                         <h2>БЖУ за неделю</h2>
-                        <p>За последние 7 дней · доля энергии</p>
+                        <p>Понедельник — воскресенье · доля энергии</p>
                       </div>
                       <div className="chart-legend">
                         <span>
@@ -800,9 +802,7 @@ export function Diary({ store }: { store: ReturnType<typeof useAppData> }) {
                       </div>
                     </div>
                     <div className="weekly-chart">
-                      {Array.from({ length: 7 }, (_, i) =>
-                        dateOffset(date, i - 6),
-                      ).map((day) => {
+                      {weekDates(date).map((day) => {
                         const value = sumNutrients(
                           data.food
                             .filter((e) => e.date === day)
@@ -978,43 +978,48 @@ export function Diary({ store }: { store: ReturnType<typeof useAppData> }) {
                           />
                         ))}
                       </div>
-                      <button
-                        className="water-add"
-                        disabled={!store.editable || water >= 10000}
-                        onClick={() =>
-                          setData((d) => ({
-                            ...d,
-                            water: {
-                              ...d.water,
-                              [date]: Math.min(
-                                10000,
-                                (d.water[date] || 0) + 250,
-                              ),
-                            },
-                          }))
-                        }
-                        aria-label="Добавить 250 мл воды"
-                      >
-                        <Plus size={16} />
-                        250 мл
-                      </button>
+                      <div className="water-buttons" role="group" aria-label="Количество воды">
+                        <button
+                          className="button primary small water-add"
+                          disabled={!store.editable || water >= 10000}
+                          onClick={() =>
+                            setData((d) => ({
+                              ...d,
+                              water: {
+                                ...d.water,
+                                [date]: Math.min(10000, (d.water[date] || 0) + 250),
+                              },
+                            }))
+                          }
+                          aria-label="Добавить 250 мл воды"
+                        >
+                          <Plus size={16} />
+                          250 мл
+                        </button>
+                        <div className={`water-remove-slot${water > 0 ? " visible" : ""}`} aria-hidden={water <= 0}>
+                          <div className="water-remove-clip">
+                            <button
+                              className="button secondary small water-remove"
+                              disabled={!store.editable || water <= 0}
+                              tabIndex={water > 0 ? 0 : -1}
+                              aria-label="Убрать 250 мл воды"
+                              onClick={() =>
+                                setData((d) => ({
+                                  ...d,
+                                  water: {
+                                    ...d.water,
+                                    [date]: Math.max(0, (d.water[date] || 0) - 250),
+                                  },
+                                }))
+                              }
+                            >
+                              <Minus size={16} />
+                              250 мл
+                            </button>
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                    {water > 0 && (
-                      <button
-                        className="text-button tiny"
-                        onClick={() =>
-                          setData((d) => ({
-                            ...d,
-                            water: {
-                              ...d.water,
-                              [date]: Math.max(0, (d.water[date] || 0) - 250),
-                            },
-                          }))
-                        }
-                      >
-                        Убрать 250 мл
-                      </button>
-                    )}
                   </section>
                 </div>
               </div>

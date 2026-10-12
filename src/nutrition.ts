@@ -32,6 +32,14 @@ export function dateOffset(date: string, days: number): string {
   return formatDate(parsed);
 }
 
+/** Monday through Sunday of the selected diary date's local calendar week. */
+export function weekDates(date: string): string[] {
+  const weekday = new Date(`${date}T12:00:00`).getDay();
+  if (!Number.isFinite(weekday)) return [];
+  const monday = dateOffset(date, -((weekday + 6) % 7));
+  return Array.from({ length: 7 }, (_, index) => dateOffset(monday, index));
+}
+
 export function sumNutrients(items: Nutrients[]): Nutrients {
   return items.reduce(
     (total, item) => ({

@@ -47,6 +47,18 @@ svg { flex-shrink: 0; }
 .food-quantity-summary { display: grid; gap: 10px; }
 .food-quantity-summary .helper { margin: 0; }
 
+/* Keep the two water controls together, including while the minus button fades out. */
+.water-card .water-actions { flex-wrap: wrap; gap: 14px; }
+.water-buttons { display: flex; align-items: center; }
+.water-card :is(.water-add, .water-remove) { min-height: 40px; gap: 6px; padding: 10px 14px; font-size: 12px; white-space: nowrap; }
+.water-remove-slot { display: grid; grid-template-columns: 0fr; opacity: 0; transform: translateX(-8px); visibility: hidden; transition: grid-template-columns 220ms ease, opacity 180ms ease, transform 220ms ease, visibility 0s 220ms; }
+.water-remove-slot.visible { grid-template-columns: 1fr; opacity: 1; transform: translateX(0); visibility: visible; transition-delay: 0s; }
+.water-remove-clip { min-width: 0; overflow: hidden; padding-block: 4px; }
+.water-remove { margin-left: 8px; }
+@media (prefers-reduced-motion: reduce) {
+  .water-remove-slot { transition: none; }
+}
+
 /* One compact row per product or recipe. */
 .product-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
 .product-card { display: grid; grid-template-columns: 64px minmax(130px, 1fr) 120px 180px 125px auto; grid-template-rows: auto auto; column-gap: 22px; row-gap: 4px; align-items: center; padding: 18px 22px; }

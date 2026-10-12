@@ -10,6 +10,7 @@ import {
   sumNutrients,
   today,
   walkStats,
+  weekDates,
 } from "./nutrition";
 import { createInitialData, DEFAULT_PROFILE } from "./seed";
 import type { Product, Recipe, WalkEntry } from "./types";
@@ -17,6 +18,12 @@ import type { Product, Recipe, WalkEntry } from "./types";
 afterEach(() => vi.useRealTimers());
 
 describe("calendar and sleep", () => {
+  it("keeps Monday first for every selected day and across year boundaries", () => {
+    const week = ["2026-10-12", "2026-10-13", "2026-10-14", "2026-10-15", "2026-10-16", "2026-10-17", "2026-10-18"];
+    for (const date of week) expect(weekDates(date)).toEqual(week);
+    expect(weekDates("2026-01-01")).toEqual(["2025-12-29", "2025-12-30", "2025-12-31", "2026-01-01", "2026-01-02", "2026-01-03", "2026-01-04"]);
+  });
+
   it("uses the local calendar date and handles leap days and year boundaries", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 9, 11, 0, 15));

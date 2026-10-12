@@ -5,7 +5,7 @@ import type { Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 import { createInitialData } from './seed';
-import { today } from './nutrition';
+import { today, weekDates } from './nutrition';
 import { useAppData } from './useAppData';
 import { DEFAULT_THEME, THEME_STORAGE_KEY } from './theme';
 
@@ -259,6 +259,64 @@ describe('Activity navigation', () => {
     expect(dialog?.querySelectorAll('.activity-type[aria-pressed="true"]')).toHaveLength(1);
     expect(dialog?.textContent).not.toContain('Шаги, если считали');
     expect(container.querySelector('h1')?.textContent).toBe('Активность');
+  });
+});
+
+describe('Dashboard week and water controls', () => {
+  it('shows Monday through Sunday and keeps the same week when another bar is selected', async () => {
+    const week = weekDates(today());
+    store.data.food = week.map((date, index) => ({ ...store.data.food[0], id: `day-${index}`, date,
+      nutrients: { kcal: 100 + index, protein: 5, fat: 4, carbs: 11, fiber: 1 } }));
+    await render();
+    const bars = () => [...container.querySelectorAll<HTMLButtonElement>('.chart-day')];
+    const labels = () => bars().map(bar => bar.querySelectorAll('span')[2]?.textContent);
+    expect(labels()).toEqual(['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс']);
+    expect(bars().map(bar => bar.querySelector('.chart-value')?.textContent)).toEqual(['100', '101', '102', '103', '104', '105', '106']);
+    await act(async () => { bars()[6].click(); });
+    expect(labels()).toEqual(['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс']);
+    expect(bars()[6].classList.contains('chosen')).toBe(true);
+    expect(container.querySelector('.ring-label strong')?.textContent).toContain('106');
+  });
+
+  it('shows the adjacent minus button after adding water and hides it again at zero', async () => {
+    store.data.water[today()] = 0;
+    store.setData = vi.fn(update => { store.data = typeof update === 'function' ? update(store.data) : update; });
+    await render();
+    const minus = () => container.querySelector<HTMLButtonElement>('[aria-label="Убрать 250 мл воды"]')!;
+    expect(minus().disabled).toBe(true);
+    expect(minus().tabIndex).toBe(-1);
+    expect(container.querySelector('.water-remove-slot')?.getAttribute('aria-hidden')).toBe('true');
+    await click('[aria-label="Добавить 250 мл воды"]');
+    await render();
+    expect(store.data.water[today()]).toBe(250);
+    expect(minus().disabled).toBe(false);
+    expect(container.querySelector('.water-remove-slot.visible')).not.toBeNull();
+    expect([...container.querySelectorAll('.water-buttons button')].map(button => button.getAttribute('aria-label')))
+      .toEqual(['Добавить 250 мл воды', 'Убрать 250 мл воды']);
+    await click('[aria-label="Убрать 250 мл воды"]');
+    await render();
+    expect(store.data.water[today()]).toBe(0);
+    expect(container.querySelector('.water-remove-slot.visible')).toBeNull();
+    expect(minus().disabled).toBe(true);
+  });
+
+  it('clamps water updates and disables both controls while the diary cannot be edited', async () => {
+    store.data.water[today()] = 9900;
+    store.setData = vi.fn(update => { store.data = typeof update === 'function' ? update(store.data) : update; });
+    await render();
+    await click('[aria-label="Добавить 250 мл воды"]');
+    await render();
+    expect(store.data.water[today()]).toBe(10000);
+    expect(container.querySelector<HTMLButtonElement>('.water-add')?.disabled).toBe(true);
+    store.data.water[today()] = 100;
+    await render();
+    await click('[aria-label="Убрать 250 мл воды"]');
+    expect(store.data.water[today()]).toBe(0);
+    store.data.water[today()] = 250;
+    store.editable = false;
+    await render();
+    expect(container.querySelector<HTMLButtonElement>('.water-add')?.disabled).toBe(true);
+    expect(container.querySelector<HTMLButtonElement>('.water-remove')?.disabled).toBe(true);
   });
 });
 
