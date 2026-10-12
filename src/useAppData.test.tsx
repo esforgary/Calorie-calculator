@@ -517,4 +517,22 @@ describe('useAppData lifecycle and ownership', () => {
       expect(isAppData({ ...data, food: [{ ...entry, quantity }] })).toBe(false);
     }
   });
+
+  it('imports old recipes and optional prepared piece weights through version-1 JSON', () => {
+    const data = createInitialData();
+    const recipe = { id: 'pancakes', name: 'Сырники', emoji: '🥞', servings: 3, cookedWeight: 300, ingredients: [] };
+    const legacy = JSON.parse(JSON.stringify({ ...data, recipes: [recipe] }));
+    expect(isAppData(legacy)).toBe(true);
+    expect(legacy.recipes[0].pieceGrams).toBeUndefined();
+    for (const pieceGrams of [0.5, 50, 5000]) {
+      const imported = JSON.parse(JSON.stringify({ ...data, recipes: [{ ...recipe, pieceGrams }] }));
+      expect(isAppData(imported)).toBe(true);
+      expect(imported.recipes[0].pieceGrams).toBe(pieceGrams);
+      expect(imported.recipes[0].cookedWeight).toBe(300);
+      expect(imported.recipes[0].servings).toBe(3);
+    }
+    for (const pieceGrams of [null, 0, -1, NaN, Infinity, 5000.01, '50']) {
+      expect(isAppData({ ...data, recipes: [{ ...recipe, pieceGrams }] })).toBe(false);
+    }
+  });
 });

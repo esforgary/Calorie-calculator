@@ -76,7 +76,8 @@ export function isAppData(value: unknown): value is AppData {
       && image(item.image) && category(item.iconCategory) && (item.note === undefined || text(item.note))
       && unitWeight(item.servingGrams) && unitWeight(item.pieceGrams))
     && listOf(value.recipes, item => text(item.id) && text(item.name) && text(item.emoji) && finite(item.servings) && item.servings > 0
-      && finite(item.cookedWeight) && item.cookedWeight >= 0 && category(item.iconCategory) && listOf(item.ingredients, ingredient => text(ingredient.productId) && finite(ingredient.grams) && ingredient.grams >= 0))
+      && finite(item.cookedWeight) && item.cookedWeight >= 0 && unitWeight(item.pieceGrams) && category(item.iconCategory)
+      && listOf(item.ingredients, ingredient => text(ingredient.productId) && finite(ingredient.grams) && ingredient.grams >= 0))
     && listOf(value.food, item => text(item.id) && text(item.name) && text(item.date) && text(item.emoji) && finite(item.grams) && item.grams >= 0
       && ['breakfast', 'lunch', 'dinner', 'snack'].includes(String(item.meal)) && nutrients(item.nutrients) && image(item.image) && category(item.iconCategory)
       && (item.productId === undefined || text(item.productId)) && foodQuantity(item.quantity))

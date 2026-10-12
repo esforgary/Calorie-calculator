@@ -22,7 +22,7 @@ import {
 } from "./nutrition";
 import { FoodIcon } from "./FoodIcon";
 import { CustomSelect } from "./Select";
-import { productQuantityGrams, type ProductUnit } from "./portions";
+import { productUnitGrams, recipeUnitGrams, quantityGramsByWeight, type ProductUnit } from "./portions";
 import { PRODUCT_CATEGORIES, RECIPE_CATEGORIES, foodCategoryLabel, resolveFoodCategory } from "./foodCategories";
 
 const mealNames: Record<MealType, string> = {
@@ -481,6 +481,7 @@ export function RecipeForm({
     return RECIPE_CATEGORIES.some(({ id }) => id === category) ? category : "main";
   });
   const [servings, setServings] = useState(String(initial?.servings ?? 2));
+  const [pieceGrams, setPieceGrams] = useState(initial?.pieceGrams ? String(initial.pieceGrams) : "");
   const [cookedWeight, setCookedWeight] = useState(
     initial ? String(initial.cookedWeight) : "",
   );
@@ -511,6 +512,7 @@ export function RecipeForm({
     iconCategory,
     servings: Number(servings),
     cookedWeight: Number(cookedWeight),
+    pieceGrams: pieceGrams === "" ? undefined : Number(pieceGrams),
     ingredients: ingredientValues,
   };
   const nutrients = recipeNutrients(previewRecipe, products);
@@ -542,6 +544,8 @@ export function RecipeForm({
       return setError(
         "Укажите фактический вес готового блюда от 1 до 100 000 г.",
       );
+    if (pieceGrams !== "" && !inRange(pieceGrams, 0.01, Math.min(5000, Number(cookedWeight))))
+      return setError("Вес одной штуки должен быть от 0,01 до 5000 г и не больше веса готового блюда.");
     onSave({
       ...previewRecipe,
       id: initial?.id ?? crypto.randomUUID(),
@@ -662,6 +666,8 @@ export function RecipeForm({
         Взвесьте готовое блюдо без посуды. Вода меняет его вес, поэтому сумма
         веса ингредиентов может отличаться.
       </p>
+      <NumberField label="Вес одной штуки, г" value={pieceGrams} set={setPieceGrams} min={0.01} max={5000} required={false} placeholder="Например, один блин — 65 г" />
+      <p className="helper">Для блинов, котлет и других штучных блюд. Порция рассчитывается из веса готового блюда и количества порций.</p>
       <NutrientPreview nutrients={nutrients} label="Весь рецепт" />
       {Number(cookedWeight) > 0 && (
         <NutrientPreview
@@ -669,6 +675,8 @@ export function RecipeForm({
           label="На 100 г готового блюда"
         />
       )}
+      {Number(servings) > 0 && <NutrientPreview nutrients={scaleNutrients(nutrients, 1 / Number(servings))} label="На одну порцию" />}
+      {inRange(pieceGrams, 0.01, 5000) && Number(cookedWeight) > 0 && <NutrientPreview nutrients={scaleNutrients(nutrients, Number(pieceGrams) / Number(cookedWeight))} label="На одну штуку" />}
       <ErrorMessage message={error} />
       <Actions
         onCancel={onCancel}
@@ -697,8 +705,9 @@ export function FoodForm({
   const [mode, setMode] = useState<"product" | "recipe">("product");
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState("");
-  const [grams, setGrams] = useState("100");
+  const [amount, setAmount] = useState("100");
   const [unit, setUnit] = useState<ProductUnit>("grams");
+  const [unitWeights, setUnitWeights] = useState<Partial<Record<"serving" | "piece", string>>>({});
   const [mealType, setMealType] = useState<MealType>(meal);
   const [error, setError] = useState("");
   const filtered = (mode === "product" ? products : recipes).filter((item) =>
@@ -719,9 +728,12 @@ export function FoodForm({
   const missingIngredient = selectedRecipe?.ingredients.some(
     (item) => !products.some((product) => product.id === item.productId),
   );
-  const totalGrams = selectedProduct
-    ? productQuantityGrams(selectedProduct, unit, Number(grams))
-    : inRange(grams, 0.01, 5000) ? Number(grams) : null;
+  const savedUnitGrams = selectedProduct
+    ? productUnitGrams(selectedProduct, unit)
+    : selectedRecipe ? recipeUnitGrams(selectedRecipe, unit) : null;
+  const unitWeightInput = unit === "grams" ? "1" : unitWeights[unit] ?? (savedUnitGrams === null ? "" : String(savedUnitGrams));
+  const unitGrams = inRange(unitWeightInput, 0.01, 5000) ? Number(unitWeightInput) : null;
+  const totalGrams = quantityGramsByWeight(unitGrams, Number(amount));
   const nutrients = selectedProduct
     ? scaleNutrients(selectedProduct, (totalGrams ?? 0) / 100)
     : selectedRecipe && selectedRecipe.cookedWeight > 0
@@ -739,7 +751,9 @@ export function FoodForm({
           ? "Выберите рецепт или сначала создайте его в разделе «Рецепты»."
           : "Выберите продукт.",
       );
-    if (totalGrams === null || totalGrams < 0.01)
+    if (unit !== "grams" && unitGrams === null)
+      return setError(`Укажите вес одной ${unit === "serving" ? "порции" : "штуки"} от 0,01 до 5000 г.`);
+    if (totalGrams === null)
       return setError("Укажите количество больше нуля. Общий вес должен быть от 0,01 до 5000 г.");
     if (
       missingIngredient ||
@@ -757,7 +771,7 @@ export function FoodForm({
       iconCategory: resolveFoodCategory(selected, products),
       productId: selectedProduct?.id,
       grams: totalGrams,
-      ...(selectedProduct && unit !== "grams" ? { quantity: { unit, amount: Number(grams) } } : {}),
+      ...(unit !== "grams" ? { quantity: { unit, amount: Number(amount) } } : {}),
       nutrients,
     });
   }
@@ -776,7 +790,8 @@ export function FoodForm({
               setSearch("");
               setError("");
               setUnit("grams");
-              setGrams("100");
+              setAmount("100");
+              setUnitWeights({});
             }}
           >
             {value === "product" ? "Продукт" : "Рецепт"}
@@ -792,7 +807,8 @@ export function FoodForm({
             setSearch(event.target.value);
             setSelectedId("");
             setUnit("grams");
-            setGrams("100");
+            setAmount("100");
+            setUnitWeights({});
           }}
           placeholder="Введите название"
           autoFocus
@@ -803,7 +819,7 @@ export function FoodForm({
           aria-label={mode === "product" ? "Продукт" : "Рецепт"}
           className="input"
           value={selected?.id ?? ""}
-          onValueChange={(value) => { setSelectedId(value); setUnit("grams"); setGrams("100"); setError(""); }}
+          onValueChange={(value) => { setSelectedId(value); setUnit("grams"); setAmount("100"); setUnitWeights({}); setError(""); }}
           required
         >
           {!filtered.length && <option value="">Ничего не найдено</option>}
@@ -824,19 +840,17 @@ export function FoodForm({
               : "Добавьте продукт в разделе «Продукты»."}
         </p>
       )}
-      {selectedProduct && (
+      {selected && (
         <div className="food-quantity-units">
           <div className="segmented portion-segmented" role="group" aria-label="Единица количества">
             {([['grams', 'Граммы'], ['serving', 'Порции'], ['piece', 'Штуки']] as const).map(([value, label]) => (
               <button type="button" key={value} className={unit === value ? 'active' : ''} aria-pressed={unit === value}
-                disabled={value !== 'grams' && !(value === 'serving' ? selectedProduct.servingGrams : selectedProduct.pieceGrams)}
-                onClick={() => { setUnit(value); setGrams(value === 'grams' ? '100' : '1'); setError(''); }}>{label}</button>
+                onClick={() => { if (unit === value) return; setUnit(value); setAmount(value === 'grams' ? '100' : '1'); setError(''); }}>{label}</button>
             ))}
           </div>
-          {!selectedProduct.servingGrams && !selectedProduct.pieceGrams && <p className="helper">Для порций и штук задайте их вес в редакторе продукта.</p>}
         </div>
       )}
-      <div className="form-grid">
+      <div className={`food-quantity-fields${unit !== "grams" ? " with-units" : ""}`}>
         <Field label="Приём пищи">
           <CustomSelect
             aria-label="Приём пищи"
@@ -851,38 +865,32 @@ export function FoodForm({
             ))}
           </CustomSelect>
         </Field>
-        <NumberField
-          label={unit === "serving" ? "Количество порций" : unit === "piece" ? "Количество штук" : "Вес, г"}
-          value={grams}
-          set={setGrams}
+        <div className={`food-amount-input${unit !== "grams" ? " has-stepper" : ""}`}>
+          <NumberField
+            label={unit === "serving" ? "Количество порций" : unit === "piece" ? "Количество штук" : "Вес, г"}
+            value={amount}
+            set={setAmount}
+            min={0.01}
+            max={unit === "grams" ? 5000 : undefined}
+          />
+          {unit !== "grams" && <>
+            <button type="button" className="quantity-step down" aria-label="Уменьшить количество" disabled={!Number.isFinite(Number(amount)) || Number(amount) <= 1} onClick={() => setAmount(String(Math.max(0.01, Math.round((Number(amount) - 1) * 100) / 100)))}>−</button>
+            <button type="button" className="quantity-step up" aria-label="Увеличить количество" onClick={() => setAmount(String(Math.round(((Number(amount) || 0) + 1) * 100) / 100))}>+</button>
+          </>}
+        </div>
+        {unit !== "grams" && <NumberField
+          label={unit === "serving" ? "Вес одной порции, г" : "Вес одной штуки, г"}
+          value={unitWeightInput}
+          set={value => setUnitWeights(current => ({ ...current, [unit]: value }))}
           min={0.01}
-          max={unit === "grams" ? 5000 : undefined}
-        />
+          max={5000}
+          placeholder="Укажите вес в граммах"
+        />}
       </div>
-      {selectedProduct && unit !== "grams" && (
-        <p className="quantity-weight" aria-live="polite">
-          {unit === "serving" ? "Одна порция" : "Одна штука"} · {fmt(unit === "serving" ? selectedProduct.servingGrams! : selectedProduct.pieceGrams!)} г
-          {totalGrams !== null && <> <span>Всего: {fmt(totalGrams)} г</span></>}
-        </p>
-      )}
-      {selectedRecipe && selectedRecipe.servings > 0 && (
-        <button
-          type="button"
-          className="button secondary"
-          onClick={() =>
-            setGrams(
-              String(
-                Math.round(
-                  (selectedRecipe.cookedWeight / selectedRecipe.servings) * 10,
-                ) / 10,
-              ),
-            )
-          }
-        >
-          Одна порция рецепта ·{" "}
-          {fmt(selectedRecipe.cookedWeight / selectedRecipe.servings)} г
-        </button>
-      )}
+      {selected && unit !== "grams" && <div className="food-quantity-summary" aria-live="polite">
+        <p className="helper">{savedUnitGrams === null ? "Задайте вес одной единицы для этой записи." : "Вес подставлен автоматически. Для этой записи его можно изменить."} Можно вводить дробное количество: 0,5 или 1,5.</p>
+        {totalGrams !== null && <p className="quantity-weight">{Number(amount).toLocaleString("ru-RU", { maximumFractionDigits: 6 })} {unit === "serving" ? "порц." : "шт."} × {fmt(unitGrams!)} г <span>Всего: {fmt(totalGrams)} г</span></p>}
+      </div>}
       {missingIngredient && (
         <p className="notice">
           В этом рецепте есть удалённый продукт. Замените его в редакторе

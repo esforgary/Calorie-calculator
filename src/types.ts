@@ -34,6 +34,8 @@ export interface Recipe {
   ingredients: Ingredient[];
   servings: number;
   cookedWeight: number;
+  /** Optional weight of one prepared piece; servings use cookedWeight / servings. */
+  pieceGrams?: number;
   emoji: string;
   iconCategory?: FoodIconCategory;
 }

@@ -33,6 +33,19 @@ svg { flex-shrink: 0; }
 .portion-previews .nutrient-preview { margin: 0; }
 .quantity-weight { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 12px; margin: 0; color: var(--surface-muted); }
 .quantity-weight > span { color: var(--surface-ink); font-weight: 600; }
+.food-quantity-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.food-quantity-fields.with-units > .field:first-child { grid-column: 1 / -1; }
+.food-quantity-fields > *, .food-amount-input .field { min-width: 0; }
+.food-amount-input { position: relative; }
+.food-amount-input.has-stepper input { padding-inline: 40px; text-align: center; appearance: textfield; -moz-appearance: textfield; }
+.food-amount-input.has-stepper input::-webkit-inner-spin-button,
+.food-amount-input.has-stepper input::-webkit-outer-spin-button { appearance: none; margin: 0; }
+.quantity-step { position: absolute; bottom: 5px; display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 9px; background: var(--surface-soft); color: var(--surface-soft-ink); font-size: 22px; line-height: 1; touch-action: manipulation; }
+.quantity-step.down { left: 5px; }
+.quantity-step.up { right: 5px; }
+.quantity-step:disabled { opacity: .35; cursor: not-allowed; }
+.food-quantity-summary { display: grid; gap: 10px; }
+.food-quantity-summary .helper { margin: 0; }
 
 /* One compact row per product or recipe. */
 .product-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }

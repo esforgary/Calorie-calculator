@@ -3,9 +3,9 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import type { Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { FoodForm, ProductForm, ProfileForm, SleepForm } from "./Forms";
+import { FoodForm, ProductForm, ProfileForm, RecipeForm, SleepForm } from "./Forms";
 import { createInitialData } from "./seed";
-import type { FoodEntry, Product, Profile, SleepEntry } from "./types";
+import type { FoodEntry, Nutrients, Product, Profile, Recipe, SleepEntry } from "./types";
 
 let root: Root;
 let container: HTMLDivElement;
@@ -21,9 +21,18 @@ afterEach(async () => {
 });
 
 const portionProduct: Product = { id: 'portion-product', name: 'Сыр', category: 'Сыр', emoji: '', kcal: 200, protein: 10, fat: 5, carbs: 30, fiber: 2, servingGrams: 40, pieceGrams: 25 };
-async function changeInput(label: string, value: string) {
+const portionRecipe: Recipe = { id: 'portion-recipe', name: 'Сырники', emoji: '', ingredients: [{ productId: portionProduct.id, grams: 400 }], cookedWeight: 600, servings: 4, pieceGrams: 50 };
+function expectNutrients(actual: Nutrients, expected: Nutrients) {
+  for (const key of Object.keys(expected) as (keyof Nutrients)[]) {
+    expect(actual[key], key).toBeCloseTo(expected[key], 10);
+  }
+}
+function labeledInput(label: string) {
   const field = [...container.querySelectorAll('label')].find(field => field.querySelector('span')?.textContent === label);
-  const input = field?.querySelector('input');
+  return field?.querySelector('input');
+}
+async function changeInput(label: string, value: string) {
+  const input = labeledInput(label);
   expect(input, label).toBeTruthy();
   await act(async () => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value);
@@ -194,6 +203,132 @@ describe('Food quantities', () => {
     expect(save.mock.calls[0][0]).toMatchObject({ name: 'Молоко', grams: 100 });
     expect(save.mock.calls[0][0].quantity).toBeUndefined();
     expect(container.querySelector<HTMLButtonElement>('[aria-label="Единица количества"] button[aria-pressed="true"]')?.textContent).toBe('Граммы');
+  });
+
+  it.each([
+    { unit: 'Порции', label: 'Количество порций', amount: '2', grams: 300, quantity: { unit: 'serving', amount: 2 }, nutrients: { kcal: 400, protein: 20, fat: 10, carbs: 60, fiber: 4 } },
+    { unit: 'Штуки', label: 'Количество штук', amount: '1.5', grams: 75, quantity: { unit: 'piece', amount: 1.5 }, nutrients: { kcal: 100, protein: 5, fat: 2.5, carbs: 15, fiber: 1 } },
+  ])('saves recipe $amount $unit with every nutrient scaled from the cooked weight', async ({ unit, label, amount, grams, quantity, nutrients }) => {
+    const save = vi.fn<(entry: FoodEntry) => void>();
+    await act(async () => root.render(<FoodForm products={[portionProduct]} recipes={[portionRecipe]} date="2026-10-11" meal="snack" onSave={save} onCancel={() => {}} />));
+    await clickText('Рецепт');
+    await clickText(unit);
+    await changeInput(label, amount);
+    await submitForm();
+    expect(save).toHaveBeenCalledOnce();
+    expect(save.mock.calls[0][0]).toMatchObject({ name: portionRecipe.name, grams, quantity });
+    expectNutrients(save.mock.calls[0][0].nutrients, nutrients);
+  });
+
+  it('keeps a 100/3 g recipe serving precise when saving all three servings', async () => {
+    const save = vi.fn<(entry: FoodEntry) => void>();
+    const recipe = { ...portionRecipe, ingredients: [{ productId: portionProduct.id, grams: 100 }], cookedWeight: 100, servings: 3 };
+    await act(async () => root.render(<FoodForm products={[portionProduct]} recipes={[recipe]} date="2026-10-11" meal="snack" onSave={save} onCancel={() => {}} />));
+    await clickText('Рецепт');
+    await clickText('Порции');
+    expect(Number(labeledInput('Вес одной порции, г')?.value)).toBe(100 / 3);
+    await changeInput('Количество порций', '3');
+    await submitForm();
+    expect(save).toHaveBeenCalledOnce();
+    expect(save.mock.calls[0][0].grams).toBe(100);
+    expect(save.mock.calls[0][0].nutrients).toEqual({ kcal: 200, protein: 10, fat: 5, carbs: 30, fiber: 2 });
+  });
+
+  it.each([
+    { unit: 'Порции', amountLabel: 'Количество порций', weightLabel: 'Вес одной порции, г', quantityUnit: 'serving' },
+    { unit: 'Штуки', amountLabel: 'Количество штук', weightLabel: 'Вес одной штуки, г', quantityUnit: 'piece' },
+  ])('accepts an inline weight for a product with no saved $unit weight', async ({ unit, amountLabel, weightLabel, quantityUnit }) => {
+    const save = vi.fn<(entry: FoodEntry) => void>();
+    const pancakes: Product = { id: 'pancakes', name: 'Блины', category: 'Выпечка', emoji: '', kcal: 250, protein: 4.5, fat: 10.1, carbs: 35.7, fiber: 0 };
+    await act(async () => root.render(<FoodForm products={[pancakes]} recipes={[]} date="2026-10-11" meal="snack" onSave={save} onCancel={() => {}} />));
+    const button = [...container.querySelectorAll('button')].find(item => item.textContent === unit)!;
+    expect(button.disabled).toBe(false);
+    await clickText(unit);
+    expect(labeledInput(weightLabel)?.value).toBe('');
+    await changeInput(weightLabel, '65');
+    await changeInput(amountLabel, '2');
+    expect(container.textContent).toContain('Всего: 130 г');
+    expect(container.textContent).toContain('Ваша порция: 325 ккал');
+    await submitForm();
+    expect(save).toHaveBeenCalledOnce();
+    expect(save.mock.calls[0][0]).toMatchObject({ productId: pancakes.id, grams: 130, quantity: { unit: quantityUnit, amount: 2 } });
+    expectNutrients(save.mock.calls[0][0].nutrients, { kcal: 325, protein: 5.85, fat: 13.13, carbs: 46.41, fiber: 0 });
+    expect(pancakes.servingGrams).toBeUndefined();
+    expect(pancakes.pieceGrams).toBeUndefined();
+  });
+
+  it('clears an inline unit weight when selecting or searching for another item', async () => {
+    const save = await mountFood();
+    await selectOption('Продукт', 'Молоко');
+    await clickText('Штуки');
+    await changeInput('Вес одной штуки, г', '65');
+    await selectOption('Продукт', 'Сыр');
+    await clickText('Штуки');
+    expect(labeledInput('Вес одной штуки, г')?.value).toBe('25');
+    await changeInput('Вес одной штуки, г', '80');
+    await changeInput('Поиск', 'Молоко');
+    await clickText('Штуки');
+    expect(labeledInput('Вес одной штуки, г')?.value).toBe('');
+    await submitForm();
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it('blocks missing and invalid inline unit weights before saving', async () => {
+    const save = await mountFood();
+    await selectOption('Продукт', 'Молоко');
+    await clickText('Штуки');
+    for (const weight of ['', '0', '-1', '0.001', '5001']) {
+      await changeInput('Вес одной штуки, г', weight);
+      await submitForm();
+      expect(save).not.toHaveBeenCalled();
+      expect(container.querySelector('[role="alert"]')?.textContent).toContain('Укажите вес одной штуки');
+    }
+  });
+
+  it('increments and decrements the selected amount while updating the saved snapshot', async () => {
+    const save = await mountFood();
+    await clickText('Порции');
+    const increase = container.querySelector<HTMLButtonElement>('[aria-label="Увеличить количество"]')!;
+    const decrease = container.querySelector<HTMLButtonElement>('[aria-label="Уменьшить количество"]')!;
+    expect(decrease.disabled).toBe(true);
+    await act(async () => increase.click());
+    expect(labeledInput('Количество порций')?.value).toBe('2');
+    expect(container.textContent).toContain('Всего: 80 г');
+    await clickText('Порции');
+    expect(labeledInput('Количество порций')?.value).toBe('2');
+    await act(async () => decrease.click());
+    expect(labeledInput('Количество порций')?.value).toBe('1');
+    await submitForm();
+    expect(save.mock.calls[0][0]).toMatchObject({ grams: 40, quantity: { unit: 'serving', amount: 1 } });
+    expectNutrients(save.mock.calls[0][0].nutrients, { kcal: 80, protein: 4, fat: 2, carbs: 12, fiber: 0.8 });
+  });
+});
+
+describe('Recipe piece weights', () => {
+  it('saves and clears an optional prepared piece weight', async () => {
+    const save = vi.fn<(recipe: Recipe) => void>();
+    await act(async () => root.render(<RecipeForm products={[portionProduct]} initial={portionRecipe} onSave={save} onCancel={() => {}} />));
+    expect(labeledInput('Вес одной штуки, г')?.value).toBe('50');
+    await changeInput('Вес одной штуки, г', '65');
+    await submitForm();
+    expect(save).toHaveBeenCalledOnce();
+    expect(save.mock.calls[0][0]).toMatchObject({ id: portionRecipe.id, pieceGrams: 65, cookedWeight: 600, servings: 4, ingredients: portionRecipe.ingredients });
+    save.mockClear();
+    await changeInput('Вес одной штуки, г', '');
+    await submitForm();
+    expect(save).toHaveBeenCalledOnce();
+    expect(save.mock.calls[0][0].pieceGrams).toBeUndefined();
+  });
+
+  it('rejects a non-positive piece weight or one exceeding the cooked recipe', async () => {
+    const save = vi.fn<(recipe: Recipe) => void>();
+    await act(async () => root.render(<RecipeForm products={[portionProduct]} initial={portionRecipe} onSave={save} onCancel={() => {}} />));
+    for (const weight of ['0', '-1', '601', '5001']) {
+      await changeInput('Вес одной штуки, г', weight);
+      await submitForm();
+      expect(save).not.toHaveBeenCalled();
+      expect(container.querySelector('[role="alert"]')?.textContent).toContain('Вес одной штуки');
+    }
   });
 });
 
